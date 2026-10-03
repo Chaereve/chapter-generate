@@ -729,10 +729,12 @@ function setSaveText(text, ok) {
 
 /* báo "vẫn đầy" bằng toast — tối đa 1 lần / 10 phút, không hộp thoại chắn màn hình */
 function warnStillFull(msg) {
+  // Tự xử lý hoàn toàn trong nền: không hiện hộp thoại/toast yêu cầu người dùng
+  // bấm nén. Nếu không thể giảm thêm, chỉ cập nhật trạng thái lưu.
   const now = Date.now();
   if (now - fullWarnAt < 600000) return;
   fullWarnAt = now;
-  toast(msg, "err", 9000);
+  setSaveText("Bộ nhớ đầy — không thể nén thêm", false);
 }
 
 /* gom mọi ảnh base64 đang lưu trong các chương */
@@ -2206,7 +2208,14 @@ function init() {
 
   renderAll();
   updateStorageMeter();
-  maybeAutoShrink(); // dữ liệu cũ nặng → tự nén ngầm ngay, không hiện hộp thoại hỏi
+  // Luôn tự nén ảnh đã có ngay sau khi tải lại (không cần người dùng bấm nút).
+  // Việc này cũng xử lý dữ liệu cũ đã vượt ngưỡng trước khi phiên hiện tại khởi động.
+  if (!store.__memory && collectStoredImages().jobs.length) {
+    autoGaveUp = false;
+    autoTries = 0;
+    shrinkLevel = 0;
+    autoShrinkSoon(0);
+  }
 
   // sự kiện
   $("#storyTitle").addEventListener("input", ev => {
