@@ -1,5 +1,17 @@
 # Nhật ký thay đổi
 
+## 3.0.1 — 2026-10-03
+
+### Sửa
+- **Hoàn tác việc đổi tên thư mục** `chapter generate/` → `chapter-generate/`.
+  Dự án Cloudflare Pages `chuseoz-chapter` trỏ **Root directory** vào đúng đường dẫn
+  `chapter generate` (thiết lập nằm ở dashboard, repo không có file cấu hình Cloudflare).
+  Việc đổi tên ở commit `c8f5f14` làm check **"Cloudflare Pages" = 🚫 Build failed** vì
+  Cloudflare không tìm thấy thư mục gốc. Đã đổi lại tên cũ và ghi chú trong README +
+  `.github/workflows/ci.yml` để không ai đổi lại lần nữa.
+- **GitHub Actions chưa từng chạy**: trigger cũ là `push: branches: [main]` + `pull_request`,
+  nên đẩy lên nhánh làm việc không kích hoạt gì. Đổi thành `on: [push, pull_request]`.
+
 ## 3.0.0 — 2026-10-03
 
 ### Kiến trúc
@@ -13,7 +25,6 @@
 - Thêm **ESLint**, **Vitest** (100 test), **GitHub Actions**. Bỏ `tsconfig.json` (hết TypeScript),
   đổi `vite.config.ts` → `vite.config.js`.
 - Phiên bản đọc từ `package.json` qua Vite `define`, không hardcode `CZ_VERSION` nữa.
-- Đổi tên thư mục `chapter generate/` → `chapter-generate/` (bỏ dấu cách).
 
 ### Sửa lỗi
 - **Ô tiêu đề mất chữ ở chế độ tối**: `#storyTitle:focus` hardcode `background:#fff` trong khi

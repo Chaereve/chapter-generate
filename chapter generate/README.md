@@ -12,9 +12,9 @@ mở bằng trình duyệt là dùng được.
 ## Chạy thử
 
 ```bash
-cd chapter-generate
+cd "chapter generate"     # tên thư mục có dấu cách — nhớ đặt trong dấu nháy
 npm install
-npm run dev        # mở http://localhost:5173
+npm run dev               # mở http://localhost:5173
 ```
 
 ## Build
@@ -40,10 +40,18 @@ thật. Nếu có phần tử nào bị đổi id mà code chưa cập nhật, t
 
 ---
 
+## ⚠️ Đừng đổi tên thư mục `chapter generate`
+
+Tên thư mục có dấu cách trông khó chịu, nhưng nó **đang được dự án Cloudflare Pages
+`chuseoz-chapter` trỏ tới làm Root directory** (thiết lập này nằm ở dashboard Cloudflare,
+không có file cấu hình nào trong repo). Đổi tên thư mục là build trên Pages **hỏng ngay**
+— chuyện này đã xảy ra một lần ở commit `c8f5f14`, check "Cloudflare Pages" báo
+🚫 Build failed. Muốn đổi tên thì phải sửa Root directory trên dashboard **trước**.
+
 ## Cấu trúc
 
 ```
-chapter-generate/
+chapter generate/
 ├─ index.html              # vỏ HTML + script chọn theme chạy trước CSS (chống chớp trắng)
 ├─ src/
 │  ├─ main.js              # entry: nạp CSS rồi khởi động app

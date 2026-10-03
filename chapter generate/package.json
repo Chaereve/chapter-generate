@@ -1,7 +1,7 @@
 {
   "name": "chuseoz-story-editor",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.0.1",
   "type": "module",
   "description": "Chuseoz — bộ soạn truyện chat cho Blogger. Một file HTML, không phụ thuộc runtime.",
   "scripts": {

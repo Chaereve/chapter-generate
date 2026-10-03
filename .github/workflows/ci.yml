@@ -1,8 +1,9 @@
 name: CI
 
+# Chạy trên MỌI nhánh: bản cũ chỉ chạy ở main + PR nên chưa từng được kích hoạt
+# trên nhánh làm việc, thành ra không kiểm tra được gì.
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -10,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: chapter-generate
+        # LƯU Ý: tên thư mục có dấu cách là CỐ Ý và KHÔNG ĐƯỢC ĐỔI.
+        # Dự án Cloudflare Pages "chuseoz-chapter" đang trỏ Root directory vào
+        # đúng đường dẫn "chapter generate". Đổi tên là build trên Pages hỏng ngay.
+        working-directory: chapter generate
     steps:
       - uses: actions/checkout@v4
 
@@ -18,7 +22,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: chapter-generate/package-lock.json
+          cache-dependency-path: chapter generate/package-lock.json
 
       - name: Cài phụ thuộc
         run: npm ci
@@ -49,4 +53,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chuseoz-single-file
-          path: chapter-generate/dist/index.html
+          path: chapter generate/dist/index.html

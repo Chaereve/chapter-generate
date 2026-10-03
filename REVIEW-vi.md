@@ -3,7 +3,7 @@
 > ## ✅ ĐÃ XỬ LÝ XONG trong bản 3.0.0 (2026-10-03)
 >
 > Toàn bộ mục **P0** và phần lớn **P1** trong tài liệu này đã được sửa. Chi tiết từng dòng
-> nằm ở **`chapter-generate/CHANGELOG.md`**. Tóm tắt:
+> nằm ở **`chapter generate/CHANGELOG.md`**. Tóm tắt:
 >
 > | Vấn đề nêu bên dưới | Trạng thái | Bằng chứng |
 > |---|---|---|
@@ -17,9 +17,12 @@
 > | Lỗ hổng `javascript:` trong `<img src>` | ✅ `imageSrcOf` lọc giao thức | `test/output.test.js` |
 > | Đồng bộ Drive ghi đè im lặng | ✅ Phát hiện xung đột, hỏi trước | `checkCloudConflict()` |
 > | Không test / lint / CI | ✅ 100 test + ESLint + GitHub Actions | `npm run check` |
-> | Không README / CHANGELOG | ✅ Đã viết | `chapter-generate/README.md` |
+> | Không README / CHANGELOG | ✅ Đã viết | `chapter generate/README.md` |
 > | Version hardcode | ✅ Đọc từ `package.json` qua Vite `define` | `src/lib/store.js` |
-> | Thư mục tên có dấu cách | ✅ `chapter generate/` → `chapter-generate/` | `git status` |
+> | Thư mục tên có dấu cách | ⚠️ **Đã thử đổi rồi phải hoàn tác** — đường dẫn `chapter generate`
+>   là Root directory của dự án Cloudflare Pages `chuseoz-chapter` (cấu hình nằm ở
+>   dashboard). Đổi tên làm check Pages fail ở commit `c8f5f14`, đã sửa ở `3.0.1` |
+>   `CHANGELOG.md` → 3.0.1 |
 > | Undo/Redo, tìm kiếm, kéo-thả, palette… | ✅ Đã thêm | `CHANGELOG.md` → *Tính năng mới* |
 >
 > **Còn để ngỏ (P2):** chuyển ảnh sang IndexedDB để bỏ hẳn trần 5MB (hiện IndexedDB mới chỉ
@@ -295,7 +298,7 @@ await fetch(U, { method: "POST", mode: "no-cors", body: new URLSearchParams({...
 
 | Vấn đề | Bằng chứng | Đề xuất |
 |---|---|---|
-| Tên thư mục có **dấu cách** | `chapter generate/` | đổi thành `chapter-generate/` — dấu cách gây lỗi trong script/CI/import |
+| Tên thư mục có **dấu cách** | `chapter generate/` | **KHÔNG đổi được** — Cloudflare Pages `chuseoz-chapter` đang trỏ Root directory vào đường dẫn này (cấu hình ở dashboard, không có file trong repo). Muốn đổi thì sửa dashboard trước. Đã ghi chú trong README |
 | Metadata package sai | `"name": "react-vite-tailwind"`, `"version": "0.0.0"` | đặt `chuseoz-story-editor` + version thật |
 | Version hardcode | `const CZ_VERSION = "2026-10-03 · bản 3";` (dòng 504) | inject từ `package.json` qua Vite `define` / `import.meta.env` |
 | Không README / CHANGELOG | repo không có file nào | README: ảnh chụp, cách chạy, cách deploy Apps Script |
