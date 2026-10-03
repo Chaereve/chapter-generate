@@ -8,11 +8,6 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # ĐỪNG ĐỔI tên thư mục: Cloudflare Pages "chuseoz-chapter" trỏ Root directory
-        # vào đúng đường dẫn "chapter generate". Đổi tên là build trên Pages hỏng ngay.
-        working-directory: chapter generate
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +15,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: chapter generate/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Cài phụ thuộc
         run: npm ci
@@ -55,4 +50,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chuseoz-single-file
-          path: chapter generate/dist/index.html
+          path: dist/index.html

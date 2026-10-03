@@ -554,6 +554,8 @@ function renderRail() {
   $("#storyCount").textContent = state.projects.length ? state.projects.length : "";
   const ap = activeProject();
   document.title = (ap && ap.title && ap.title.trim() ? ap.title.trim() : "Truyện chưa đặt tên") + " — Chuseoz";
+  const storyTitle = $("#storyTitle");
+  if (storyTitle) storyTitle.title = ap && ap.title ? ap.title : "Truyện chưa đặt tên";
   const sf = $("#storyFilter");
   if (sf && sf.value) applyStoryFilter(sf.value);
   renderOutline();
@@ -621,7 +623,7 @@ function chapterCard(p, b, i) {
     '<button class="iconbtn ch-drag" data-t="drag" title="Kéo để sắp xếp chương" aria-label="Kéo để sắp xếp chương ' + (i + 1) + '">' + icon("drag") + "</button>" +
     '<span class="ch-index">' + (i + 1) + "</span>" +
     '<label class="sr-only" for="chTitle' + n + '">Tên chương ' + (i + 1) + "</label>" +
-    '<input type="text" id="chTitle' + n + '" class="ch-title" placeholder="Tên chương..." value="' + esc(b.title) + '"/>' +
+    '<input type="text" id="chTitle' + n + '" class="ch-title" placeholder="Tên chương..." value="' + esc(b.title) + '" title="' + esc(b.title) + '"/>' +
     '<span class="ch-sum" data-sum aria-hidden="true"></span>' +
     '<div class="ch-tools">' +
     '<button class="iconbtn" data-t="caret" title="Thu gọn / mở rộng chương" aria-label="Thu gọn hoặc mở rộng chương ' + (i + 1) + '" aria-expanded="' + (collapsed ? "false" : "true") + '">' + icon("caret") + "</button>" +
@@ -632,8 +634,8 @@ function chapterCard(p, b, i) {
     "</div></div>" +
     '<div class="chapter-body">' +
     '<div class="chars-grid">' +
-    '<div class="field"><label for="chLeft' + n + '">Nhân vật bên trái</label><input type="text" id="chLeft' + n + '" data-f="leftChars" value="' + esc(b.leftChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
-    '<div class="field"><label for="chRight' + n + '">Nhân vật bên phải</label><input type="text" id="chRight' + n + '" data-f="rightChars" value="' + esc(b.rightChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
+    '<div class="field"><label for="chLeft' + n + '">Nhân vật bên trái</label><input type="text" id="chLeft' + n + '" data-f="leftChars" value="' + esc(b.leftChars) + '" title="' + esc(b.leftChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
+    '<div class="field"><label for="chRight' + n + '">Nhân vật bên phải</label><input type="text" id="chRight' + n + '" data-f="rightChars" value="' + esc(b.rightChars) + '" title="' + esc(b.rightChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
     "</div>" +
     '<div class="ch-content editor" data-f="content" contenteditable="true" role="textbox" aria-multiline="true" ' +
     'aria-label="Nội dung chương ' + (i + 1) + '" aria-describedby="chHint' + n + '" spellcheck="false" ' +
@@ -662,7 +664,9 @@ function chapterCard(p, b, i) {
     count.textContent =
       (st.chars ? fmtCount(st.chars) + " ký tự · ~" + fmtCount(st.words) + " từ" : "") +
       (nImg ? (st.chars ? " · " : "") + nImg + " ảnh" : "");
+    count.title = count.textContent;
     sum.textContent = (st.chars ? fmtCount(st.chars) + " ký tự" : "trống") + (nImg ? " · " + nImg + " ảnh" : "");
+    sum.title = sum.textContent;
   };
   updateCount();
   const onEdit = (structural) => {
@@ -702,11 +706,13 @@ function chapterCard(p, b, i) {
 
   card.querySelector(".ch-title").addEventListener("input", ev => {
     b.title = ev.target.value;
+    ev.target.title = ev.target.value;
     touchProject(p); saveProjects(); schedulePreview(); scheduleOutline();
   });
   ["leftChars", "rightChars"].forEach(f => {
     card.querySelector('[data-f="' + f + '"]').addEventListener("input", ev => {
       b[f] = ev.target.value;
+      ev.target.title = ev.target.value;
       touchProject(p); saveProjects(); schedulePreview();
     });
   });
@@ -1919,6 +1925,7 @@ function init() {
     const p = activeProject();
     if (!p) return;
     p.title = ev.target.value;
+    ev.target.title = ev.target.value || "Truyện chưa đặt tên";
     touchProject(p);
     saveProjects();
     renderRailSoft();
