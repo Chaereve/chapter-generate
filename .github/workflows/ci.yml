@@ -1,0 +1,58 @@
+name: CI
+
+# Chạy trên mọi nhánh — bản cũ chỉ chạy ở main + PR nên chưa từng được kích hoạt.
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # ĐỪNG ĐỔI tên thư mục: Cloudflare Pages "chuseoz-chapter" trỏ Root directory
+        # vào đúng đường dẫn "chapter generate". Đổi tên là build trên Pages hỏng ngay.
+        working-directory: chapter generate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: chapter generate/package-lock.json
+
+      - name: Cài phụ thuộc
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Kiểm thử
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Sau build: thực thi JS đã bundle trong dist — bắt lỗi "build ra trang trắng".
+      - name: Boot thử bản build
+        run: npx vitest run test/dist.boot.test.js
+
+      - name: Kiểm tra dist là một file duy nhất
+        run: |
+          test -f dist/index.html
+          grep -q 'id="chapters"' dist/index.html
+          # không được tham chiếu script hay stylesheet bên ngoài (tất cả phải inline)
+          if grep -Eq '<link[^>]+rel="stylesheet"' dist/index.html; then
+            echo "dist/index.html còn tham chiếu CSS ngoài" >&2; exit 1
+          fi
+          if grep -Eq '<script[^>]+src="/' dist/index.html; then
+            echo "dist/index.html còn tham chiếu JS ngoài" >&2; exit 1
+          fi
+          echo "dist/index.html: $(wc -c < dist/index.html) bytes"
+
+      - name: Tải dist lên artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chuseoz-single-file
+          path: chapter generate/dist/index.html
