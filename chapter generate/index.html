@@ -29,6 +29,7 @@
   --code-bg:#f0ede6; --sel:#f3d9cf;
   --warn-bg:#fdf3df; --warn-line:#efd9ac; --warn-text:#7a4a10;
   --danger-soft:#fbeeed;
+  --ok:#2e7d4f; --err:#c0432b;
   --scrim:rgba(30,25,18,.45);
   --topbar:rgba(247,245,241,.92);
   --shadow-sm:0 1px 3px rgba(34,30,25,.07);
@@ -50,6 +51,7 @@
   --code-bg:#2a251f; --sel:#4a2a1f;
   --warn-bg:#33270f; --warn-line:#5a4517; --warn-text:#e8c27a;
   --danger-soft:#3a1d1a;
+  --ok:#58b183; --err:#e0684e;
   --scrim:rgba(0,0,0,.55);
   --topbar:rgba(22,19,17,.88);
   --shadow-sm:0 1px 3px rgba(0,0,0,.35);
@@ -580,7 +582,6 @@ async function copyText(text, btn) {
 /* ============================================================
    PARSER — chia sẻ giữa trình tạo HTML blog và xem trước
    ============================================================ */
-const IMG_RE = /\[\[IMG:[^\]]+\]\]/gi; // chỉ dùng cho split
 const TOKEN_RE = /\[\[IMG:([^|]+)(?:\|([^|]*))?\]\]/i; // có group, dùng để bóc payload
 
 /* ---- ảnh: dữ liệu nằm riêng ở block.images, nội dung chỉ giữ token ngắn [[IMG:i…]] ---- */
@@ -721,6 +722,7 @@ async function shrinkAllImages() {
   shrinking = false;
   const savedOk = writeProjects(state.projects);
   updateStorageMeter();
+  if (savedOk) queueCloudPush();
   renderPreview();
   if (savedOk) {
     $("#saveStatus").classList.add("saved");
@@ -821,7 +823,6 @@ function buildPart2(blocks) {
   const pages = [], titles = [];
   blocks.forEach(block => {
     const parts = [];
-    const right = (block.rightChars || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     const flush = buf => {
       if (!buf.length) return;
       let html = '<div class="chat-container">';
@@ -1244,6 +1245,19 @@ const saveProjects = debounce(() => {
   queueCloudPush();
 }, 400);
 
+/* Lưu ngay (thao tác cấu trúc) — gồm gc ảnh, cập nhật meter và đồng bộ cloud */
+function persistNow() {
+  gcUnusedImages();
+  const ok = writeProjects(state.projects);
+  if (ok) {
+    $("#saveStatus").classList.add("saved");
+    $("#saveStatusText").textContent = "Đã tự lưu · " + fmtTime(Date.now());
+  }
+  updateStorageMeter();
+  queueCloudPush();
+  return ok;
+}
+
 /* ============================================================
    DRIVE — cùng giao thức Apps Script với bản gốc
    ============================================================ */
@@ -1429,11 +1443,6 @@ function closeModal(scrim) {
 /* ============================================================
    RENDER — rail / chapters / preview
    ============================================================ */
-function chapterStats(block) {
-  const len = (block.content || "").length;
-  return { len, lines: block.content ? block.content.split("\n").length : 0 };
-}
-
 function renderRail() {
   const list = $("#storyList");
   list.innerHTML = "";
@@ -1457,7 +1466,7 @@ function renderRail() {
           if (!confirm('Xóa truyện "' + (p.title || "chưa đặt tên") + '"? Các chương sẽ mất vĩnh viễn khỏi trình duyệt.')) return;
           state.projects = state.projects.filter(x => x.id !== p.id);
           if (state.activeId === p.id) state.activeId = state.projects[0].id;
-          writeProjects(state.projects);
+          persistNow();
           renderAll();
           toast("Đã xóa truyện.", "ok");
         } else {
@@ -1467,7 +1476,7 @@ function renderRail() {
           copy.updatedAt = new Date().toISOString();
           state.projects.unshift(copy);
           state.activeId = copy.id;
-          writeProjects(state.projects);
+          persistNow();
           renderAll();
           toast("Đã nhân bản truyện.", "ok");
         }
@@ -1652,19 +1661,19 @@ function chapterCard(p, b, i) {
       const j = act === "up" ? i - 1 : i + 1;
       if (j < 0 || j >= p.blocks.length) return;
       [p.blocks[i], p.blocks[j]] = [p.blocks[j], p.blocks[i]];
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail(); schedulePreview();
+      touchProject(p); persistNow(); renderChapters(); renderRail(); schedulePreview();
     } else if (act === "del") {
       if (p.blocks.length <= 1) { toast("Chương cuối — hãy thêm chương mới trước khi xóa.", "err"); return; }
       if (!confirm('Xóa "' + (b.title || "chương") + '"?')) return;
       p.blocks.splice(i, 1);
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail(); schedulePreview();
+      touchProject(p); persistNow(); renderChapters(); renderRail(); schedulePreview();
       toast("Đã xóa chương.", "ok");
     } else if (act === "dup") {
       const copy = JSON.parse(JSON.stringify(b));
       copy.id = uid("blk_");
       copy.title = (b.title || "Chương") + " (bản sao)";
       p.blocks.splice(i + 1, 0, copy);
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail();
+      touchProject(p); persistNow(); renderChapters(); renderRail();
       toast("Đã nhân bản chương.", "ok");
     }
   });
@@ -1681,7 +1690,6 @@ function renderPreview() {
   if (!p || !p.blocks.length) { body.innerHTML = '<div class="pv-empty">Chưa có gì để xem trước.</div>'; return; }
   const b = p.blocks.find(x => x.id === state.focusedBlock) || p.blocks[0];
   $("#pvChapterName").textContent = b.title || "";
-  const right = (b.rightChars || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
   let html = '<div class="pv-title">' + escHtml(b.title || "Chương") + "</div>";
   let buf = [];
   const flush = () => {
@@ -1843,7 +1851,7 @@ function switchStory(id) {
 function newStory() {
   const p = normalizeProject({ id: uid("story_"), title: "", blocks: [makeBlock(null)] });
   state.projects.unshift(p);
-  writeProjects(state.projects);
+  persistNow();
   switchStory(p.id);
   $("#storyTitle").focus();
   $("#storyTitle").select();
@@ -1927,7 +1935,8 @@ function init() {
 
   const cfg = cloudCfg();
   if (cfg.url && cfg.key) {
-    setCloudState("saved", "Drive: " + (store.getItem(KEY_CLOUD_AT) ? "lưu lúc " + fmtTime(Date.parse(store.getItem(KEY_CLOUD_AT))) : "đã kết nối"));
+    const cloudAt = Date.parse(store.getItem(KEY_CLOUD_AT) || "");
+    setCloudState("saved", "Drive: " + (cloudAt ? "lưu lúc " + fmtTime(cloudAt) : "đã kết nối"));
   }
 
   renderAll();
@@ -1965,7 +1974,7 @@ function init() {
     p.blocks.push(b);
     state.focusedBlock = b.id;
     touchProject(p);
-    writeProjects(state.projects);
+    persistNow();
     renderChapters(); renderRail();
     schedulePreview();
     const cards = $("#chapters").children;
@@ -1996,7 +2005,7 @@ function init() {
       if (!confirm('Xóa trắng nội dung truyện "' + currentStoryTitle() + '"? Các truyện khác vẫn an toàn.')) return;
       p.blocks = [makeBlock(null)];
       touchProject(p);
-      writeProjects(state.projects);
+      persistNow();
       $("#storyTitle").value = p.title;
       renderAll();
       toast("Đã xóa nội dung truyện hiện tại.", "ok");
