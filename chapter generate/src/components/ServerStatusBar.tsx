@@ -1,7 +1,9 @@
 import { ServerStatus } from '../types';
+import { SERVER_DISPLAY_URL } from '../utils/story';
 
 interface Props {
   status: ServerStatus;
+  onRecheck?: () => void;
 }
 
 const statusConfig = {
@@ -31,23 +33,32 @@ const statusConfig = {
   },
 };
 
-export default function ServerStatusBar({ status }: Props) {
+export default function ServerStatusBar({ status, onRecheck }: Props) {
   const cfg = statusConfig[status];
 
   return (
     <div className={`flex items-center justify-between flex-wrap gap-3 px-4 py-3 rounded-xl border ${cfg.bg} ${cfg.border} mb-6`}>
       <div className="flex items-center gap-3 flex-wrap">
         {/* Status dot */}
-        <div className={`relative flex-shrink-0`}>
+        <div className="relative flex-shrink-0">
           <div className={`w-2.5 h-2.5 rounded-full ${cfg.dot} ring-4 ${cfg.ring}`} />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-slate-700">Chế độ tự động:</span>
           <code className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">
-            chuseoz.pythonanywhere.com
+            {SERVER_DISPLAY_URL}
           </code>
           <span className={`text-xs font-semibold ${cfg.textColor}`}>{cfg.text}</span>
+          {onRecheck && (
+            <button
+              onClick={onRecheck}
+              title="Kiểm tra lại ngay"
+              className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 underline underline-offset-2 transition-colors"
+            >
+              kiểm tra lại
+            </button>
+          )}
         </div>
       </div>
 

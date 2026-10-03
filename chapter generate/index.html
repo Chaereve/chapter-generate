@@ -29,6 +29,7 @@
   --code-bg:#f0ede6; --sel:#f3d9cf;
   --warn-bg:#fdf3df; --warn-line:#efd9ac; --warn-text:#7a4a10;
   --danger-soft:#fbeeed;
+  --ok:#2e7d4f; --err:#c0432b;
   --scrim:rgba(30,25,18,.45);
   --topbar:rgba(247,245,241,.92);
   --shadow-sm:0 1px 3px rgba(34,30,25,.07);
@@ -50,6 +51,7 @@
   --code-bg:#2a251f; --sel:#4a2a1f;
   --warn-bg:#33270f; --warn-line:#5a4517; --warn-text:#e8c27a;
   --danger-soft:#3a1d1a;
+  --ok:#58b183; --err:#e0684e;
   --scrim:rgba(0,0,0,.55);
   --topbar:rgba(22,19,17,.88);
   --shadow-sm:0 1px 3px rgba(0,0,0,.35);
@@ -218,6 +220,14 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
 .ch-content:hover{border-color:var(--line2)}
 .ch-content:focus{outline:none;border-color:var(--accent)}
 .ch-content.dragover{border-color:var(--accent);background:var(--accent-soft)}
+.editor{cursor:text;overflow-y:auto;max-height:420px;white-space:pre-wrap;word-break:break-word}
+.editor:empty::before{content:attr(data-placeholder);color:var(--ink3);pointer-events:none;display:block}
+.editor b{font-weight:700}
+#storyFilterWrap{padding:0 16px 8px}
+#storyFilter{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;background:var(--card)}
+#storyFilter:focus{outline:none;border-color:var(--accent)}
+#storyFilter::placeholder{color:var(--ink3)}
+#rail.collapsed #storyFilterWrap{display:none}
 .img-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
 .img-row input.url{
   flex:1 1 160px;min-width:120px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;background:var(--card);
@@ -436,6 +446,7 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
 <div id="shell">
   <aside id="rail">
     <div class="rail-head"><span class="rail-head-label">Kho truyện</span><span id="storyCount"></span><button class="iconbtn" id="railToggle" title="Thu gọn"></button></div>
+    <div id="storyFilterWrap"><input id="storyFilter" type="text" placeholder="Lọc truyện…" autocomplete="off" spellcheck="false"/></div>
     <div id="storageWarn"></div>
     <div id="storyList"></div>
     <div class="rail-foot">
@@ -461,6 +472,7 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
             <div class="fc-row"><b>Tên: lời thoại</b> — tên nằm trong <code>Nhân vật bên phải</code> thì bubble <b>phải</b>.</div>
             <div class="fc-row"><code>(Nhãn dán: Tên)</code> — một dòng riêng cho sticker.</div>
             <div class="fc-row">Dòng trống tạo khoảng cách · chèn ảnh bằng nút <b>Tải ảnh</b> hoặc <b>Ctrl+V</b>.</div>
+            <div class="fc-row">Dán từ web khác giữ <b>in đậm</b>/<i>in nghiêng</i> · phím tắt <b>Ctrl+B</b> / <b>Ctrl+I</b>.</div>
           </div>
         </div>
       </div>
@@ -580,7 +592,6 @@ async function copyText(text, btn) {
 /* ============================================================
    PARSER — chia sẻ giữa trình tạo HTML blog và xem trước
    ============================================================ */
-const IMG_RE = /\[\[IMG:[^\]]+\]\]/gi; // chỉ dùng cho split
 const TOKEN_RE = /\[\[IMG:([^|]+)(?:\|([^|]*))?\]\]/i; // có group, dùng để bóc payload
 
 /* ---- ảnh: dữ liệu nằm riêng ở block.images, nội dung chỉ giữ token ngắn [[IMG:i…]] ---- */
@@ -721,6 +732,7 @@ async function shrinkAllImages() {
   shrinking = false;
   const savedOk = writeProjects(state.projects);
   updateStorageMeter();
+  if (savedOk) queueCloudPush();
   renderPreview();
   if (savedOk) {
     $("#saveStatus").classList.add("saved");
@@ -730,17 +742,17 @@ async function shrinkAllImages() {
 }
 
 /* ---- hộp thoại đề xuất nén khi bộ nhớ đầy (không spam) ---- */
-let quotaModalAt = 0;
+let quotaSnoozeUntil = 0;
 function offerShrinkModal() {
   const now = Date.now();
-  if (now - quotaModalAt < 60000) return;
-  quotaModalAt = now;
+  if (now < quotaSnoozeUntil) return;
+  quotaSnoozeUntil = now + 600000; // tối đa 1 lần mỗi 10 phút
   openModal("<h2>Bộ nhớ máy đã đầy</h2>",
     '<p style="font-size:13.5px;line-height:1.6;color:var(--ink2);margin:0 0 10px">Truyện + ảnh đang lưu đã vượt giới hạn <b>~5MB</b> của trình duyệt nên không lưu được nữa.</p>' +
     '<p style="font-size:13.5px;line-height:1.6;color:var(--ink2);margin:0">Ảnh dán vào truyện (những đợt trước) còn gốc chưa nén — <b>nén lại</b> sẽ thu nhỏ còn vài phần trăm, chất lượng vẫn đủ xem trên blog và vẫn nhúng được vào file Word.</p>',
     "", [
       { label: "Nén ảnh ngay", cls: "btn btn-primary", onClick: s => { closeModal(s); shrinkAllImages(); } },
-      { label: "Để sau", cls: "btn" }
+      { label: "Để sau (1 giờ)", cls: "btn", onClick: s => { quotaSnoozeUntil = Date.now() + 3600000; closeModal(s); } }
     ]);
 }
 function parseLine(line) {
@@ -762,6 +774,94 @@ function sideOf(name, rightChars) {
   const n = String(name).toLowerCase();
   return rightChars.split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
     .some(w => n.includes(w) || w.includes(n)) ? "right" : "left";
+}
+
+/* ---- in đậm / in nghiêng: giữ tối thiểu <b>/<i> trong nội dung ---- */
+function stripInlineTags(s) { return String(s || "").replace(/<\/?(?:b|i)>/gi, ""); }
+/* parse thoại khi dòng chứa <b>/<i>: tên lấy từ bản sạch tag,
+   nhưng lờ i thoại lấy từ dòng gốc (giữ tag định dạng bên trong) */
+function parseSmartLine(line) {
+  if (!/<\/?[bi]>/i.test(line)) return parseLine(line);
+  const dlg = parseLine(stripInlineTags(line));
+  if (!dlg) return null;
+  if (dlg.message.indexOf("(Nhãn dán:") === 0) return dlg; // nhãn dán: không có tag
+  let i = 0;
+  while (i < line.length) {
+    const m = line.slice(i).match(/^<\/?[bi]>/i);
+    if (m) { i += m[0].length; continue; }
+    if (line[i] === ":") {
+      const msg = line.slice(i + 1).trim();
+      if (msg) return { name: dlg.name, message: msg };
+      return dlg;
+    }
+    i++;
+  }
+  return dlg;
+}
+/* escape toàn bộ rồi chỉ khôi phục <b>/<i> — an toàn chèn innerHTML/blog */
+function escInline(s) {
+  return escHtml(String(s == null ? "" : s)).replace(/&lt;(\/?)(b|i)&gt;/g, (m, sl, t) => "<" + sl + t + ">");
+}
+/* tách <b>/<i> thành các đoạn run — dùng cho file Word */
+function inlineRunParts(text) {
+  const out = [];
+  let bold = false, italic = false;
+  String(text).split(/(<\/?[bi]>)/i).forEach(part => {
+    if (!part) return;
+    const tl = part.toLowerCase();
+    if (tl === "<b>") { bold = true; return; }
+    if (tl === "</b>") { bold = false; return; }
+    if (tl === "<i>") { italic = true; return; }
+    if (tl === "</i>") { italic = false; return; }
+    out.push({ text: part, bold, italic });
+  });
+  return out;
+}
+function wRunsFromInline(text, base) {
+  const o = base || {};
+  return inlineRunParts(text).map(seg =>
+    wRun(seg.text, { bold: (o.bold || seg.bold) || undefined, italic: (o.italic || seg.italic) || undefined, size: o.size, color: o.color })
+  ).join("");
+}
+
+/* ---- soạn thảo giàu định dạng: contenteditable <-> văn bản giữ <b>/<i> ---- */
+const ED_BLOCKS = new Set(["div", "p", "section", "article", "header", "footer", "li", "ul", "ol", "table", "tr", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "pre"]);
+function editorToText(root) {
+  let out = "";
+  const walk = node => {
+    node.childNodes.forEach(n => {
+      if (n.nodeType === 3) { out += n.nodeValue.replace(/\u00a0/g, " "); return; }
+      if (n.nodeType !== 1) return;
+      const t = n.tagName.toLowerCase();
+      if (t === "br") { out += "\n"; return; }
+      if (t === "b" || t === "strong") { out += "<b>"; walk(n); out += "</b>"; return; }
+      if (t === "i" || t === "em") { out += "<i>"; walk(n); out += "</i>"; return; }
+      if (t === "img") {
+        const src = n.getAttribute("src") || "";
+        if (/^https?:\/\//i.test(src) || /^data:image\//i.test(src)) out += "\n[[IMG:" + src + "]]\n";
+        return;
+      }
+      if (t === "td" || t === "th") { walk(n); out += " "; return; }
+      if (ED_BLOCKS.has(t)) {
+        if (out && !out.endsWith("\n")) out += "\n";
+        walk(n);
+        if (!out.endsWith("\n")) out += "\n";
+        return;
+      }
+      walk(n);
+    });
+  };
+  walk(root);
+  return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+}
+function textToEditorHtml(v) {
+  return escHtml(v).replace(/&lt;(\/?)(b|i)&gt;/g, (m, sl, t) => "<" + sl + t + ">");
+}
+/* dán HTML từ web/Word → văn bản tối thiểu (giữ đậm/nghiêng/xuống dòng/ảnh web) */
+function pasteHtmlToClean(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script,style,meta,link,title").forEach(x => x.remove());
+  return editorToText(doc.body).trim();
 }
 
 /* ============================================================
@@ -821,11 +921,10 @@ function buildPart2(blocks) {
   const pages = [], titles = [];
   blocks.forEach(block => {
     const parts = [];
-    const right = (block.rightChars || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     const flush = buf => {
       if (!buf.length) return;
       let html = '<div class="chat-container">';
-      buf.forEach(m => { html += '<div class="msg ' + m.side + '"><b>' + escHtml(m.name) + "</b>" + escHtml(m.message) + "</div>"; });
+      buf.forEach(m => { html += '<div class="msg ' + m.side + '"><b>' + escInline(m.name) + "</b>" + escInline(m.message) + "</div>"; });
       parts.push(html + "</div>");
       buf.length = 0;
     };
@@ -836,10 +935,10 @@ function buildPart2(blocks) {
       if (!line.trim()) { flush(buf); parts.push('<div style="height: 12px;"></div>'); return; }
       const imgSrc = line.trim().match(new RegExp("^\\[\\[IMG:[^\\]]+\\]\\]$", "i")) ? imageSrcOf(block, line.trim()) : null;
       if (imgSrc) { flush(buf); parts.push('<img class="story-inline-image" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" />'); return; }
-      const dlg = parseLine(line);
+      const dlg = parseSmartLine(line);
       if (dlg) { buf.push({ name: dlg.name, message: dlg.message, side: sideOf(dlg.name, block.rightChars || "") }); return; }
       flush(buf);
-      parts.push("<div>" + escHtml(line) + "</div>");
+      parts.push("<div>" + escInline(line) + "</div>");
     });
     flush(buf);
     const SP = '<div style="height: 12px;"></div>';
@@ -856,7 +955,7 @@ function buildPart2(blocks) {
   let out = '<div class="chapter-container">\n';
   pages.forEach((p, i) => {
     out += '    <div class="chapter-page' + (i === 0 ? " active" : "") + '" id="page-' + (i + 1) + '">\n';
-    out += '        <h2 class="chapter-title">' + escHtml(titles[i]) + "</h2>\n";
+    out += '        <h2 class="chapter-title">' + escInline(titles[i]) + "</h2>\n";
     out += '        <div class="chapter-content">' + p + "</div>\n";
     out += "    </div>\n";
   });
@@ -1027,7 +1126,7 @@ async function buildDocx(blocks, storyTitle, onProgress) {
   let hasContent = false;
   blocks.forEach((b, bi) => {
     if (bi > 0) bodyParts.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
-    bodyParts.push(wPara(wRun(b.title || "Chương...", { bold: true, size: 32, color: "222222" }),
+    bodyParts.push(wPara(wRun(stripInlineTags(b.title || "Chương..."), { bold: true, size: 32, color: "222222" }),
       '<w:pStyle w:val="Heading1"/><w:spacing w:before="240" w:after="200"/><w:jc w:val="center"/>' +
       '<w:pBdr><w:bottom w:val="dashed" w:sz="6" w:space="6" w:color="CCCCCC"/></w:pBdr>'));
     const lines = String(b.content || "").replace(/(\r?\n){3,}/g, "\n\n").split("\n");
@@ -1068,20 +1167,20 @@ async function buildDocx(blocks, storyTitle, onProgress) {
                 wRun(/^data:/i.test(src) ? "[ảnh]" : src, { color: "0563C1", size: 20 }) + "</w:hyperlink>", ""));
             }
           } else if (part.trim()) {
-            bodyParts.push(wPara(wRun(part, { size: 22, color: "333333" }), '<w:spacing w:after="120" w:line="288" w:lineRule="auto"/><w:jc w:val="both"/>'));
+            bodyParts.push(wPara(wRunsFromInline(part, { size: 22, color: "333333" }), '<w:spacing w:after="120" w:line="288" w:lineRule="auto"/><w:jc w:val="both"/>'));
           }
         });
         return;
       }
-      const dlg = parseLine(line);
+      const dlg = parseSmartLine(line);
       if (dlg && dlg.message !== "(Nhãn dán: " + dlg.name + ")") {
-        bodyParts.push(wPara(wRun(dlg.name, { bold: true, size: 22, color: "1F1F1F" }) + wRun(": " + dlg.message, { size: 22, color: "333333" }),
+        bodyParts.push(wPara(wRun(stripInlineTags(dlg.name), { bold: true, size: 22, color: "1F1F1F" }) + wRunsFromInline(": " + dlg.message, { size: 22, color: "333333" }),
           '<w:spacing w:after="120" w:line="288" w:lineRule="auto"/><w:jc w:val="both"/>'));
       } else if (dlg) { // nhãn dán
-        bodyParts.push(wPara(wRun(dlg.message, { italic: true, size: 22, color: "777777" }),
+        bodyParts.push(wPara(wRunsFromInline(dlg.message, { italic: true, size: 22, color: "777777" }),
           '<w:spacing w:after="120"/><w:jc w:val="center"/>'));
       } else {
-        bodyParts.push(wPara(wRun(line, { size: 22, color: "333333" }), '<w:spacing w:after="120" w:line="288" w:lineRule="auto"/><w:jc w:val="both"/>'));
+        bodyParts.push(wPara(wRunsFromInline(line, { size: 22, color: "333333" }), '<w:spacing w:after="120" w:line="288" w:lineRule="auto"/><w:jc w:val="both"/>'));
       }
     });
   });
@@ -1167,7 +1266,7 @@ function makeBlock(prev) {
 function normalizeProject(p) {
   return {
     id: p.id || uid("story_"),
-    title: p.title || "Truyện chưa đặt tên",
+    title: typeof p.title === "string" ? p.title : "",
     updatedAt: p.updatedAt || new Date().toISOString(),
     blocks: (Array.isArray(p.blocks) ? p.blocks : []).filter(b => b && typeof b === "object").map(b => migrateBlockImages({
       id: b.id || uid("blk_"),
@@ -1202,8 +1301,12 @@ function writeProjects(list) {
     return true;
   } catch (e) {
     $("#saveStatus").classList.remove("saved");
-    $("#saveStatusText").textContent = "Lỗi lưu — bộ nhớ đầy";
-    offerShrinkModal();
+    if (store.__memory) {
+      $("#saveStatusText").textContent = "Không lưu được — bị chặn lưu trữ";
+    } else {
+      $("#saveStatusText").textContent = "Lỗi lưu — bộ nhớ đầy";
+      offerShrinkModal();
+    }
     return false;
   }
 }
@@ -1220,7 +1323,17 @@ function activeProject() {
 function touchProject(p) {
   p.updatedAt = new Date().toISOString();
 }
+function gcUnusedImages() {
+  state.projects.forEach(pr => pr.blocks.forEach(b => {
+    if (!b.images || typeof b.images !== "object") return;
+    const content = String(b.content || "");
+    Object.keys(b.images).forEach(id => {
+      if (content.indexOf("[[IMG:" + id + "]]") < 0) delete b.images[id];
+    });
+  }));
+}
 const saveProjects = debounce(() => {
+  gcUnusedImages();
   const saved = writeProjects(state.projects);
   if (saved) {
     $("#saveStatus").classList.add("saved");
@@ -1229,6 +1342,19 @@ const saveProjects = debounce(() => {
   updateStorageMeter();
   queueCloudPush();
 }, 400);
+
+/* Lưu ngay (thao tác cấu trúc) — gồm gc ảnh, cập nhật meter và đồng bộ cloud */
+function persistNow() {
+  gcUnusedImages();
+  const ok = writeProjects(state.projects);
+  if (ok) {
+    $("#saveStatus").classList.add("saved");
+    $("#saveStatusText").textContent = "Đã tự lưu · " + fmtTime(Date.now());
+  }
+  updateStorageMeter();
+  queueCloudPush();
+  return ok;
+}
 
 /* ============================================================
    DRIVE — cùng giao thức Apps Script với bản gốc
@@ -1318,6 +1444,7 @@ function ingestBackupData(data, mode) {
     state.projects = Array.from(map.values());
     if (activeId && state.projects.some(p => p.id === activeId)) state.activeId = activeId;
   }
+  state.focusedBlock = "";
   writeProjects(state.projects);
   renderAll();
   return { added: clean.length };
@@ -1386,6 +1513,7 @@ async function driveRestoreModal() {
    MODAL
    ============================================================ */
 function openModal(titleHtml, bodyHtml, footHtml, buttons) {
+  document.querySelectorAll(".modal-scrim").forEach(m => closeModal(m));
   const scrim = document.createElement("div");
   scrim.className = "modal-scrim";
   const btns = (buttons || []).map((b, i) => '<button class="' + (b.cls || "btn") + '" data-mi="' + i + '">' + b.label + "</button>").join("");
@@ -1398,20 +1526,29 @@ function openModal(titleHtml, bodyHtml, footHtml, buttons) {
   scrim.addEventListener("click", ev => {
     if (ev.target === scrim || ev.target.closest("[data-close]")) closeModal(scrim);
     const mi = ev.target.closest("[data-mi]");
-    if (mi && buttons && buttons[+mi.dataset.mi] && buttons[+mi.dataset.mi].onClick) buttons[+mi.dataset.mi].onClick(scrim);
+    if (mi && buttons && buttons[+mi.dataset.mi]) {
+      const mb = buttons[+mi.dataset.mi];
+      if (mb.onClick) mb.onClick(scrim); else closeModal(scrim);
+    }
   });
-  const escFn = ev => { if (ev.key === "Escape") { closeModal(scrim); document.removeEventListener("keydown", escFn); } };
+  const escFn = ev => { if (ev.key === "Escape") closeModal(scrim); };
+  scrim.__escFn = escFn;
   document.addEventListener("keydown", escFn);
   return scrim;
 }
-function closeModal(scrim) { scrim.remove(); }
+function closeModal(scrim) {
+  if (scrim.__escFn) document.removeEventListener("keydown", scrim.__escFn);
+  scrim.remove();
+}
 
 /* ============================================================
    RENDER — rail / chapters / preview
    ============================================================ */
-function chapterStats(block) {
-  const len = (block.content || "").length;
-  return { len, lines: block.content ? block.content.split("\n").length : 0 };
+function applyStoryFilter(q) {
+  const needle = String(q || "").trim().toLowerCase();
+  document.querySelectorAll("#storyList .story-item").forEach(el => {
+    el.style.display = !needle || el.textContent.toLowerCase().includes(needle) ? "" : "none";
+  });
 }
 
 function renderRail() {
@@ -1437,7 +1574,7 @@ function renderRail() {
           if (!confirm('Xóa truyện "' + (p.title || "chưa đặt tên") + '"? Các chương sẽ mất vĩnh viễn khỏi trình duyệt.')) return;
           state.projects = state.projects.filter(x => x.id !== p.id);
           if (state.activeId === p.id) state.activeId = state.projects[0].id;
-          writeProjects(state.projects);
+          persistNow();
           renderAll();
           toast("Đã xóa truyện.", "ok");
         } else {
@@ -1447,7 +1584,7 @@ function renderRail() {
           copy.updatedAt = new Date().toISOString();
           state.projects.unshift(copy);
           state.activeId = copy.id;
-          writeProjects(state.projects);
+          persistNow();
           renderAll();
           toast("Đã nhân bản truyện.", "ok");
         }
@@ -1458,6 +1595,10 @@ function renderRail() {
     list.appendChild(el);
   });
   $("#storyCount").textContent = state.projects.length ? state.projects.length : "";
+  const ap = activeProject();
+  document.title = (ap && ap.title && ap.title.trim() ? ap.title.trim() : "Truyện chưa đặt tên") + " — Chuseoz";
+  const sf = $("#storyFilter");
+  if (sf && sf.value) applyStoryFilter(sf.value);
 }
 
 function renderChapters() {
@@ -1465,7 +1606,7 @@ function renderChapters() {
   const box = $("#chapters");
   box.innerHTML = "";
   $("#emptyState").style.display = p && p.blocks.length ? "none" : "block";
-  $("#addChapter").style.display = p && p.blocks.length ? "flex" : "none";
+  $("#addChapter").style.display = "flex";
   if (!p) return;
   p.blocks.forEach((b, i) => box.appendChild(chapterCard(p, b, i)));
   if (!state.focusedBlock && p.blocks.length) state.focusedBlock = p.blocks[0].id;
@@ -1489,37 +1630,38 @@ function chapterCard(p, b, i) {
     '<div class="field"><label>Nhân vật bên trái</label><input type="text" data-f="leftChars" value="' + esc(b.leftChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
     '<div class="field"><label>Nhân vật bên phải</label><input type="text" data-f="rightChars" value="' + esc(b.rightChars) + '" placeholder="Tên, cách nhau bởi dấu phẩy"/></div>' +
     "</div>" +
-    '<textarea class="ch-content" data-f="content" placeholder="Tên: lời thoại&#10;Tên: lời thoại&#10;&#10;(Nhãn dán: Tên)"></textarea>' +
+    '<div class="ch-content editor" data-f="content" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false" data-placeholder="Tên: lời thoại — dán từ web giữ in đậm/in nghiêng (Ctrl+B / Ctrl+I)"></div>' +
     '<div class="img-row">' +
     '<input type="url" class="url" placeholder="Dán URL ảnh…"/>' +
     '<button class="btn" data-t="insert">' + icon("image") + ' Chèn</button>' +
     '<button class="btn" data-t="upload">' + icon("upload") + ' Tải ảnh</button>' +
     '<span class="char-count" data-count></span>' +
     "</div>" +
-    '<p class="img-hint">Ảnh dán vào được lưu <b>riêng khỏi văn bản</b> — ô nội dung chỉ giữ token ngắn gọn. <b>Ctrl+V</b> hoặc kéo–thả ảnh thẳng vào ô nội dung.</p>' +
+    '<p class="img-hint">Dán từ web khác giữ <b>in đậm</b>/<i>in nghiêng</i>. Ảnh dán vào lưu <b>riêng khỏi văn bản</b> — ô nội dung chỉ giữ token ngắn. <b>Ctrl+V</b> hoặc kéo–thả ảnh thẳng vào ô nội dung.</p>' +
     "</div>";
 
-  const ta = card.querySelector(".ch-content");
-  ta.value = b.content || "";
+  const ed = card.querySelector(".ch-content");
+  ed.innerHTML = textToEditorHtml(b.content || "");
   const count = card.querySelector("[data-count]");
   const updateCount = () => {
-    const n = ta.value.length;
-    const nImg = (ta.value.match(/\[\[IMG:/g) || []).length;
-    count.textContent = (n ? fmtCount(n) + " ký tự" : "") + (nImg ? (n ? " · " : "") + nImg + " ảnh" : "");
+    const raw = editorToText(ed);
+    const n = ed.textContent.length;
+    const nWords = (ed.textContent.match(/\S+/g) || []).length;
+    const nImg = (raw.match(/\[\[IMG:/g) || []).length;
+    count.textContent = (n ? fmtCount(n) + " ký tự · ~" + fmtCount(nWords) + " từ" : "") + (nImg ? (n ? " · " : "") + nImg + " ảnh" : "");
   };
   updateCount();
-  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.max(150, Math.min(ta.scrollHeight, 420)) + "px"; };
-  grow();
   const onEdit = () => {
-    b[ta.dataset.f] = ta.value;
-    updateCount(); grow();
+    if (!ed.textContent && !ed.querySelector("img")) ed.innerHTML = ""; // placeholder hiện lại khi trống
+    b.content = editorToText(ed);
+    updateCount();
     state.focusedBlock = b.id;
     touchProject(p);
     saveProjects();
     schedulePreview();
   };
-  ta.addEventListener("input", onEdit);
-  ta.addEventListener("focus", () => {
+  ed.addEventListener("input", onEdit);
+  ed.addEventListener("focus", () => {
     if (state.focusedBlock !== b.id) {
       state.focusedBlock = b.id;
       document.querySelectorAll(".chapter.focused").forEach(x => x.classList.remove("focused"));
@@ -1535,6 +1677,13 @@ function chapterCard(p, b, i) {
       schedulePreview();
     }
   });
+  // phím tắt định dạng: Ctrl+B / Ctrl+I
+  ed.addEventListener("keydown", ev => {
+    if (!(ev.ctrlKey || ev.metaKey)) return;
+    const k = ev.key.toLowerCase();
+    if (k === "b") { ev.preventDefault(); document.execCommand("bold", false); onEdit(); }
+    else if (k === "i") { ev.preventDefault(); document.execCommand("italic", false); onEdit(); }
+  });
 
   card.querySelector(".ch-title").addEventListener("input", ev => {
     b.title = ev.target.value;
@@ -1547,27 +1696,56 @@ function chapterCard(p, b, i) {
     });
   });
 
-  // chèn ảnh: URL / upload / paste / drop — ảnh lớn tự nén, chèn đúng vị trí con trỏ cuối
-  let lastCaret = null;
-  const trackCaret = () => {
-    try { lastCaret = { s: ta.selectionStart, e: ta.selectionEnd }; } catch (e) {}
+  // chèn ảnh + dán giàu định dạng: URL / upload / paste / drop — ảnh lớn tự nén, chèn đúng vị trí con trỏ
+  let savedRange = null;
+  const saveRange = () => {
+    try {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && ed.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+      }
+    } catch (e) {}
   };
-  ["focus", "click", "keyup", "input", "select"].forEach(t => ta.addEventListener(t, trackCaret));
+  ["keyup", "mouseup", "focus", "input", "touchend"].forEach(t => ed.addEventListener(t, saveRange));
+  const rangeToEnd = () => {
+    const r = document.createRange();
+    r.selectNodeContents(ed);
+    r.collapse(false);
+    return r;
+  };
+  const placeCaret = r => {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    saveRange();
+  };
+  const validSaved = () => savedRange && ed.contains(savedRange.commonAncestorContainer);
+  const insertPlainTextAtCaret = text => {
+    ed.focus();
+    placeCaret(validSaved() ? savedRange : rangeToEnd());
+    if (!document.execCommand("insertText", false, text)) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const r = sel.getRangeAt(0);
+        r.deleteContents();
+        r.insertNode(document.createTextNode(text));
+        r.collapse(false);
+        sel.removeAllRanges(); sel.addRange(r);
+        saveRange();
+      }
+    }
+  };
+  const insertHtmlAtCaret = html => {
+    ed.focus();
+    placeCaret(validSaved() ? savedRange : rangeToEnd());
+    if (!document.execCommand("insertHTML", false, html)) insertPlainTextAtCaret(stripInlineTags(html.replace(/<[^>]+>/g, "")));
+  };
   const insertAtCursor = src => {
     const token = "[[IMG:" + addBlockImage(b, src) + "]]";
-    const c = lastCaret && typeof lastCaret.s === "number" ? lastCaret : null;
-    const st = Math.min(c ? c.s : ta.value.length, ta.value.length);
-    const en = Math.min(c ? c.e : ta.value.length, ta.value.length);
-    const before = ta.value.slice(0, st), after = ta.value.slice(en);
-    ta.value = before + (before && !/\n$/.test(before) ? "\n" : "") + token + (after && !/^\n/.test(after) ? "\n" : "") + after;
-    b.content = ta.value;
-    const pos = (before + (before && !/\n$/.test(before) ? "\n" : "") + token).length;
-    ta.focus();
-    try { ta.setSelectionRange(pos, pos); } catch (e) {}
-    trackCaret();
-    updateCount(); grow();
-    ta.scrollTop = ta.scrollHeight; // nhìn thấy ngay token vừa chèn
-    touchProject(p); saveProjects(); schedulePreview();
+    const before = editorToText(ed);
+    insertPlainTextAtCaret((before && !before.endsWith("\n") ? "\n" : "") + token + "\n");
+    onEdit();
+    ed.scrollTop = ed.scrollHeight; // nhìn thấy token vừa chèn
   };
   const insertImageCompressed = src => {
     const beforeLen = src.length;
@@ -1596,10 +1774,12 @@ function chapterCard(p, b, i) {
     };
     fileInput.click();
   });
-  ta.addEventListener("paste", ev => {
-    const items = ev.clipboardData && ev.clipboardData.items;
-    if (!items) return;
-    for (const it of items) {
+  // dán: ưu tiên ảnh → HTML (giữ đậm/nghiêng) → văn bản thường mặc định
+  ed.addEventListener("paste", ev => {
+    const dt = ev.clipboardData;
+    if (!dt) return;
+    for (let ii = 0; ii < (dt.items ? dt.items.length : 0); ii++) {
+      const it = dt.items[ii];
       if (it.type && it.type.startsWith("image/")) {
         ev.preventDefault();
         const f = it.getAsFile();
@@ -1610,15 +1790,44 @@ function chapterCard(p, b, i) {
         return;
       }
     }
+    const html = dt.getData("text/html");
+    if (html) {
+      const clean = pasteHtmlToClean(html);
+      if (clean) {
+        ev.preventDefault();
+        insertHtmlAtCaret(escInline(clean).replace(/\n/g, "<br>"));
+        onEdit();
+      }
+    }
   });
-  ["dragover", "dragenter"].forEach(t => ta.addEventListener(t, ev => { ev.preventDefault(); ta.classList.add("dragover"); }));
-  ["dragleave", "drop"].forEach(t => ta.addEventListener(t, ev => { ev.preventDefault(); ta.classList.remove("dragover"); }));
-  ta.addEventListener("drop", ev => {
+  ["dragover", "dragenter"].forEach(t => ed.addEventListener(t, ev => { ev.preventDefault(); ed.classList.add("dragover"); }));
+  ["dragleave", "drop"].forEach(t => ed.addEventListener(t, ev => { ev.preventDefault(); ed.classList.remove("dragover"); }));
+  ed.addEventListener("drop", ev => {
     const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
     if (f && f.type.startsWith("image/")) {
       const reader = new FileReader();
       reader.onload = () => insertImageCompressed(reader.result);
       reader.readAsDataURL(f);
+      return;
+    }
+    // kéo–thả HTML từ web → giữ đậm/nghiêng, chèn tại điểm thả
+    const html = ev.dataTransfer && ev.dataTransfer.getData("text/html");
+    if (html) {
+      const clean = pasteHtmlToClean(html);
+      if (clean) {
+        ev.preventDefault();
+        try {
+          if (document.caretRangeFromPoint) {
+            const r = document.caretRangeFromPoint(ev.clientX, ev.clientY);
+            if (r && ed.contains(r.commonAncestorContainer)) { savedRange = r.cloneRange(); }
+          } else if (document.caretPositionFromPoint) {
+            const pos = document.caretPositionFromPoint(ev.clientX, ev.clientY);
+            if (pos && ed.contains(pos.offsetNode)) { const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); r.collapse(true); savedRange = r; }
+          }
+        } catch (e) {}
+        insertHtmlAtCaret(escInline(clean).replace(/\n/g, "<br>"));
+        onEdit();
+      }
     }
   });
 
@@ -1630,19 +1839,19 @@ function chapterCard(p, b, i) {
       const j = act === "up" ? i - 1 : i + 1;
       if (j < 0 || j >= p.blocks.length) return;
       [p.blocks[i], p.blocks[j]] = [p.blocks[j], p.blocks[i]];
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail(); schedulePreview();
+      touchProject(p); persistNow(); renderChapters(); renderRail(); schedulePreview();
     } else if (act === "del") {
       if (p.blocks.length <= 1) { toast("Chương cuối — hãy thêm chương mới trước khi xóa.", "err"); return; }
       if (!confirm('Xóa "' + (b.title || "chương") + '"?')) return;
       p.blocks.splice(i, 1);
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail(); schedulePreview();
+      touchProject(p); persistNow(); renderChapters(); renderRail(); schedulePreview();
       toast("Đã xóa chương.", "ok");
     } else if (act === "dup") {
       const copy = JSON.parse(JSON.stringify(b));
       copy.id = uid("blk_");
       copy.title = (b.title || "Chương") + " (bản sao)";
       p.blocks.splice(i + 1, 0, copy);
-      touchProject(p); writeProjects(state.projects); renderChapters(); renderRail();
+      touchProject(p); persistNow(); renderChapters(); renderRail();
       toast("Đã nhân bản chương.", "ok");
     }
   });
@@ -1655,16 +1864,16 @@ const renderRailSoft = debounce(renderRail, 500);
 function renderPreview() {
   const p = activeProject();
   const body = $("#pvBody");
+  const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
   if (!p || !p.blocks.length) { body.innerHTML = '<div class="pv-empty">Chưa có gì để xem trước.</div>'; return; }
   const b = p.blocks.find(x => x.id === state.focusedBlock) || p.blocks[0];
   $("#pvChapterName").textContent = b.title || "";
-  const right = (b.rightChars || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  let html = '<div class="pv-title">' + escHtml(b.title || "Chương") + "</div>";
+  let html = '<div class="pv-title">' + escInline(b.title || "Chương") + "</div>";
   let buf = [];
   const flush = () => {
     if (!buf.length) return;
     html += '<div class="pv-chat">';
-    buf.forEach(m => { html += '<div class="pv-msg ' + m.side + '"><span class="pv-name">' + escHtml(m.name) + "</span>" + escHtml(m.message) + "</div>"; });
+    buf.forEach(m => { html += '<div class="pv-msg ' + m.side + '"><span class="pv-name">' + escInline(stripInlineTags(m.name)) + "</span>" + escInline(m.message) + "</div>"; });
     html += "</div>";
     buf = [];
   };
@@ -1678,14 +1887,14 @@ function renderPreview() {
       html += src ? '<img class="pv-img" src="' + escHtml(src) + '" alt=""/>' : "";
       return;
     }
-    const dlg = parseLine(line);
+    const dlg = parseSmartLine(line);
     if (dlg) { buf.push({ name: dlg.name, message: dlg.message, side: sideOf(dlg.name, b.rightChars || "") }); return; }
     flush();
-    html += '<div class="pv-text">' + escHtml(line) + "</div>";
+    html += '<div class="pv-text">' + escInline(line) + "</div>";
   });
   flush();
   body.innerHTML = html || '<div class="pv-empty">Chương đang trống — viết vài dòng để xem trước.</div>';
-  body.scrollTop = body.scrollHeight;
+  if (nearBottom) body.scrollTop = body.scrollHeight;
 }
 
 /* ============================================================
@@ -1710,7 +1919,10 @@ function openCodeModal() {
     '<p class="cs-sub">Dán tiếp vào <b>phía dưới</b> phần Style &amp; Script, cùng bài đăng đó.</p>' +
     '<div class="code-box" id="cb2"></div></div>';
   const scrim = openModal("<h2>Mã HTML đã sẵn sàng</h2>", body, currentStoryTitle() + " · " + p.blocks.length + " chương",
-    [{ label: "Đóng", cls: "btn" }]);
+    [
+      { label: "Sao chép gộp (dán 1 lần)", cls: "btn btn-ink", onClick: () => copyText(part1 + "\n\n" + part2) },
+      { label: "Đóng", cls: "btn" }
+    ]);
   scrim.querySelector("#cb1").textContent = part1;
   scrim.querySelector("#cb2").textContent = part2;
   scrim.addEventListener("click", ev => {
@@ -1817,7 +2029,7 @@ function switchStory(id) {
 function newStory() {
   const p = normalizeProject({ id: uid("story_"), title: "", blocks: [makeBlock(null)] });
   state.projects.unshift(p);
-  writeProjects(state.projects);
+  persistNow();
   switchStory(p.id);
   $("#storyTitle").focus();
   $("#storyTitle").select();
@@ -1901,7 +2113,8 @@ function init() {
 
   const cfg = cloudCfg();
   if (cfg.url && cfg.key) {
-    setCloudState("saved", "Drive: " + (store.getItem(KEY_CLOUD_AT) ? "lưu lúc " + fmtTime(Date.parse(store.getItem(KEY_CLOUD_AT))) : "đã kết nối"));
+    const cloudAt = Date.parse(store.getItem(KEY_CLOUD_AT) || "");
+    setCloudState("saved", "Drive: " + (cloudAt ? "lưu lúc " + fmtTime(cloudAt) : "đã kết nối"));
   }
 
   renderAll();
@@ -1919,6 +2132,8 @@ function init() {
   });
 
   $("#btnNewStory").addEventListener("click", newStory);
+  const storyFilter = $("#storyFilter");
+  if (storyFilter) storyFilter.addEventListener("input", () => applyStoryFilter(storyFilter.value));
   $("#btnCode").addEventListener("click", openCodeModal);
   $("#btnWord").addEventListener("click", exportWord);
   $("#burger").addEventListener("click", () => { $("#rail").classList.add("open"); $("#railScrim").classList.add("open"); });
@@ -1939,7 +2154,7 @@ function init() {
     p.blocks.push(b);
     state.focusedBlock = b.id;
     touchProject(p);
-    writeProjects(state.projects);
+    persistNow();
     renderChapters(); renderRail();
     schedulePreview();
     const cards = $("#chapters").children;
@@ -1970,7 +2185,7 @@ function init() {
       if (!confirm('Xóa trắng nội dung truyện "' + currentStoryTitle() + '"? Các truyện khác vẫn an toàn.')) return;
       p.blocks = [makeBlock(null)];
       touchProject(p);
-      writeProjects(state.projects);
+      persistNow();
       $("#storyTitle").value = p.title;
       renderAll();
       toast("Đã xóa nội dung truyện hiện tại.", "ok");
@@ -1979,6 +2194,7 @@ function init() {
 
   // phím tắt
   document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape") menu.classList.remove("open");
     if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") { ev.preventDefault(); openCodeModal(); }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); writeProjects(state.projects); toast("Đã lưu.", "ok"); }
   });
@@ -1986,5 +2202,5 @@ function init() {
 }
 init();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3fb2d4a6e3a2637',t:'MTc5MDE4MzU3NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>

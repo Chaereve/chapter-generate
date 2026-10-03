@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { AlertState } from '../../types';
+import { escapeHtml } from '../../utils/story';
 import AlertBanner from '../AlertBanner';
 import OutputCard from '../OutputCard';
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 export default function LinksTab() {
   const [baseUrl, setBaseUrl] = useState('https://chuseoz.blogspot.com/2026/05/love-bound.html');
@@ -19,13 +16,20 @@ export default function LinksTab() {
       setAlert({ type: 'error', message: '⚠️ Vui lòng nhập danh sách tên chương trước!' });
       return;
     }
-    if (!baseUrl.trim()) {
+    const url = baseUrl.trim();
+    if (!url) {
       setAlert({ type: 'error', message: '⚠️ Vui lòng nhập link bài viết gốc!' });
       return;
     }
+    if (!/^https?:\/\/.+/i.test(url)) {
+      setAlert({ type: 'error', message: '⚠️ Link bài viết chưa đúng — phải bắt đầu bằng http:// hoặc https://' });
+      return;
+    }
+    // Bỏ anchor cũ nếu ngưởi dùng dán link đã có #page-N
+    const cleanUrl = url.replace(/#.*$/, '');
     const lines = chaptersText.split('\n').filter((l) => l.trim());
     const html = lines
-      .map((l, i) => `<a class="chapter-link" href="${baseUrl.trim()}#page-${i + 1}">${escapeHtml(l.trim())}</a>`)
+      .map((l, i) => `<a class="chapter-link" href="${cleanUrl}#page-${i + 1}">${escapeHtml(l.trim())}</a>`)
       .join('\n');
     setOutput(html);
     setShowOutput(true);
@@ -58,10 +62,11 @@ export default function LinksTab() {
             🌐
           </div>
           <input
-            type="text"
+            type="url"
             className="input-field rounded-l-none flex-1"
             value={baseUrl}
             placeholder="https://yourblog.blogspot.com/.../your-post.html"
+            spellCheck={false}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
         </div>
@@ -82,8 +87,9 @@ export default function LinksTab() {
         <textarea
           className="story-textarea"
           rows={8}
-          placeholder={`Chương 1: Khởi đầu\nChương 2: Gặp gỡ định mệnh\nChương 3: Sóng gió bắt đầu\n...`}
+          placeholder={'Chương 1: Khởi đầu\nChương 2: Gặp gỡ định mệnh\nChương 3: Sóng gió bắt đầu\n...'}
           value={chaptersText}
+          spellCheck={false}
           onChange={(e) => setChaptersText(e.target.value)}
         />
       </div>
@@ -114,7 +120,7 @@ export default function LinksTab() {
         <span>TẠO LINK MỤC LỤC HTML</span>
       </button>
 
-      <AlertBanner alert={alert} />
+      <AlertBanner alert={alert} onClose={() => setAlert(null)} />
 
       {/* Output */}
       {showOutput && (

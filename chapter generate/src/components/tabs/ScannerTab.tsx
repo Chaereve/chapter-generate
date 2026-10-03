@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { AlertState } from '../../types';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import AlertBanner from '../AlertBanner';
 
 interface NameEntry {
@@ -26,17 +27,25 @@ export default function ScannerTab() {
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [scanning, setScanning] = useState(false);
   const [dragover, setDragover] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadFile = (file: File) => {
-    if (!file.name.endsWith('.txt')) {
+    if (!file.name.toLowerCase().endsWith('.txt')) {
       setAlert({ type: 'error', message: '⚠️ Vui lòng chỉ chọn file văn bản định dạng .txt (UTF-8)!' });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setAlert({ type: 'error', message: '⚠️ File quá lớn (trên 20MB). Hãy chia nhỏ file truyện trước khi quét!' });
       return;
     }
     const reader = new FileReader();
     reader.onload = (e) => {
       setText((e.target?.result as string) ?? '');
       setAlert({ type: 'success', message: `📁 Đã đọc file "${file.name}". Nhấn "PHÂN TÍCH & QUÉT TÊN NHÂN VẬT" bên dưới!` });
+    };
+    reader.onerror = () => {
+      setAlert({ type: 'error', message: '⚠️ Không đọc được file. Hãy lưu file ở dạng UTF-8 rồi thử lại!' });
     };
     reader.readAsText(file, 'UTF-8');
   };
@@ -89,6 +98,16 @@ export default function ScannerTab() {
     }, 300);
   };
 
+  const copyNameList = async () => {
+    const ok = await copyTextToClipboard(names.map((n) => n.name).join(', '));
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      setAlert({ type: 'error', message: '⚠️ Không copy được — hãy bôi đen thủ công.' });
+    }
+  };
+
   const medals = ['🥈', '🥇', '🥉'];
   const podiumHeights = ['h-20', 'h-24', 'h-16'];
   const podiumColors = [
@@ -111,8 +130,11 @@ export default function ScannerTab() {
 
       {/* Drop zone */}
       <div
+        role="button"
+        tabIndex={0}
         className={`dropzone flex flex-col items-center justify-center gap-3 py-12 px-6 mb-5 text-center ${dragover ? 'dragover' : ''}`}
         onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click(); }}
         onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
         onDragLeave={() => setDragover(false)}
         onDrop={(e) => {
@@ -133,22 +155,36 @@ export default function ScannerTab() {
         <input
           ref={fileRef}
           type="file"
-          accept=".txt"
+          accept=".txt,text/plain"
           className="hidden"
-          onChange={(e) => { if (e.target.files?.[0]) loadFile(e.target.files[0]); }}
+          onChange={(e) => {
+            if (e.target.files?.[0]) loadFile(e.target.files[0]);
+            e.target.value = ''; // cho phép chọn lại cùng 1 file
+          }}
         />
       </div>
 
       {/* Manual text area */}
       <div className="mb-5">
-        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-          Hoặc dán trực tiếp đoạn văn bản truyện vào đây:
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Hoặc dán trực tiếp đoạn văn bản truyện vào đây:
+          </label>
+          {text && (
+            <button
+              onClick={() => { setText(''); setNames([]); }}
+              className="text-[11px] font-semibold text-slate-400 hover:text-red-500 transition-colors"
+            >
+              ✕ Xóa văn bản
+            </button>
+          )}
+        </div>
         <textarea
           className="story-textarea"
           rows={6}
           placeholder="Dán nội dung truyện cần quét tên vào đây..."
           value={text}
+          spellCheck={false}
           onChange={(e) => setText(e.target.value)}
         />
         {text && (
@@ -176,18 +212,27 @@ export default function ScannerTab() {
         )}
       </button>
 
-      <AlertBanner alert={alert} />
+      <AlertBanner alert={alert} onClose={() => setAlert(null)} />
 
       {/* Results */}
       {names.length > 0 && (
         <div className="animate-fade-slide bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               🎯 Danh sách tên nhân vật
             </h3>
-            <span className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">
-              {names.length} kết quả
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyNameList}
+                className="text-xs font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full transition-colors"
+                title="Copy dạng: Tên 1, Tên 2, ... để dán vào ô Nhân vật thoại Trái/Phải"
+              >
+                {copied ? '✅ Đã copy!' : '📋 Copy danh sách tên'}
+              </button>
+              <span className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">
+                {names.length} kết quả
+              </span>
+            </div>
           </div>
 
           {/* Podium top 3 */}
@@ -217,6 +262,10 @@ export default function ScannerTab() {
               </div>
             ))}
           </div>
+
+          <p className="text-[11px] text-slate-400 mt-4">
+            💡 Mẹo: copy danh sách tên rồi dán vào ô <b>Nhân vật thoại Trái/Phải</b> ở tab Tạo Code Truyện để bong bóng chat căn đúng phía.
+          </p>
         </div>
       )}
     </div>
