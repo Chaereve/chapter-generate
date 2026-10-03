@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Chuseoz — Soạn truyện Blogger</title>
 <meta name="theme-color" content="#f7f5f1"/>
+<!-- Không để trình duyệt phục vụ bản HTML cũ đã lưu đệm (bản cũ còn hộp thoại hỏi nén ảnh) -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0"/>
+<meta http-equiv="Pragma" content="no-cache"/>
 <script>
 /* chọn theme TRƯỚC khi CSS áp dụng — không bị chớp trắng */
 (function(){
@@ -344,6 +347,7 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
 .menu button:hover{background:var(--hover)}
 .menu button.danger{color:var(--err)}
 .menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
+.menu-ver{padding:7px 11px 4px;margin-top:3px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--ink3);cursor:default}
 
 /* ---------- responsive ---------- */
 #main{flex:1;min-width:0;padding:clamp(18px,2.6vw,30px) clamp(14px,3vw,30px) 90px}
@@ -438,6 +442,7 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
         <button data-act="drive-restore" id="mDriveRestore"></button>
         <hr/>
         <button data-act="clear" class="danger" id="mClear"></button>
+        <div class="menu-ver" id="menuVer"></div>
       </div>
     </div>
   </div>
@@ -494,6 +499,9 @@ svg.ic{width:15px;height:15px;flex:0 0 auto;vertical-align:-2px}
    Chuseoz — bộ soạn truyện chat cho Blogger (bản tinh gọn)
    Một file, không phụ thuộc ngoài, giữ nguyên dữ liệu cũ.
    ============================================================ */
+
+/* Phiên bản — hiện ở cuối menu ⋯ và trong console để biết đang chạy bản nào. */
+const CZ_VERSION = "2026-10-03 · bản 3";
 
 /* ---------- storage an toàn (khung xem trước có thể chặn localStorage) ---------- */
 const store = (() => {
@@ -598,11 +606,12 @@ const TOKEN_RE = /\[\[IMG:([^|]+)(?:\|([^|]*))?\]\]/i; // có group, dùng để
 function makeImageId(n) {
   return "i" + Date.now().toString(36) + (n || 0).toString(36) + Math.random().toString(36).slice(2, 5);
 }
-function addBlockImage(b, src) {
+function addBlockImage(b, src, cz) {
   if (!b.images || typeof b.images !== "object") b.images = {};
   let id = makeImageId();
   while (b.images[id]) id = makeImageId();
   b.images[id] = { src: String(src) };
+  if (cz) b.images[id].cz = cz; // nhớ mức nén → reload không nén lại
   return id;
 }
 /* trả về src thật của token: ưu tiên id trong kho ảnh, sau đó chấp nhận token cũ (URL/data dài) */
@@ -709,7 +718,16 @@ const SHRINK_LEVELS = [           // nén chưa ăn thua → lần sau nén mạ
   { px: 1000, q: 0.70 },
   { px: 860, q: 0.62 },
   { px: 720, q: 0.55 }
-];
+].map(l => ({ px: l.px, q: l.q, tag: l.px + "@" + l.q }));
+const CZ_KEEP = "keep";           // ảnh nhỏ sẵn / không nén được — giữ nguyên, đừng thử lại
+/* Mỗi ảnh được ghi nhớ "đã nén ở mức nào" (images[id].cz) để KHÔNG nén lại
+   mỗi lần mở trang — nén lại chỉ làm ảnh mờ dần mà chẳng nhẹ thêm bao nhiêu.
+   Trả về: -1 = chưa từng nén (cần xử lý), 0..N = đã nén ở mức đó, 99 = giữ nguyên. */
+function czStrength(tag) {
+  if (!tag) return -1;
+  if (tag === CZ_KEEP) return 99;
+  return SHRINK_LEVELS.findIndex(l => l.tag === tag);
+}
 let shrinking = false;
 let shrinkLevel = 0;
 let autoTimer = 0;
@@ -744,10 +762,11 @@ function collectStoredImages() {
   state.projects.forEach(pr => pr.blocks.forEach(b => {
     const imgs = b.images || {};
     Object.keys(imgs).forEach(id => {
-      const src = imgs[id] && imgs[id].src;
+      const obj = imgs[id];
+      const src = obj && obj.src;
       if (src && /^data:image\//i.test(src)) {
         total += src.length;
-        jobs.push({ imgs, id, src });
+        jobs.push({ imgs, id, obj, src });
       }
     });
   }));
@@ -776,18 +795,32 @@ function maybeAutoShrink(savedOk) {
   autoShrinkSoon(400);
 }
 
-/* nén toàn bộ ảnh đang lưu. opts.auto = chạy ngầm (không hỏi, không spam toast) */
+/* nén toàn bộ ảnh đang lưu.
+   opts.auto  = chạy ngầm: IM LẶNG tuyệt đối (không toast, không hộp thoại),
+                chỉ cập nhật dòng trạng thái lưu ở thanh bên.
+   opts.force = nén lại cả ảnh đã nén rồi (nút "Nén ảnh ngay"). */
 async function shrinkAllImages(opts) {
   opts = opts || {};
   const auto = !!opts.auto;
   if (shrinking) return false;
   const found = collectStoredImages();
-  const jobs = found.jobs, totalBefore = found.total;
+  const totalBefore = found.total;
+  /* chỉ đụng vào ảnh CHƯA nén hoặc nén yếu hơn mức đang cần */
+  const jobs = opts.force ? found.jobs.slice() : found.jobs.filter(j => czStrength(j.obj && j.obj.cz) < shrinkLevel);
   if (!jobs.length) {
+    const used = storageUsedBytes();
+    if (auto && used >= 0 && used <= AUTO_SHRINK_AT) return true; // bộ nhớ đã ổn — im lặng, không có gì phải làm
     if (auto) {
+      /* mọi ảnh đều đã nén ở mức hiện tại mà vẫn đầy → nhảy thẳng sang mức mạnh hơn */
+      const strengths = found.jobs.map(j => czStrength(j.obj && j.obj.cz)).filter(s => s >= 0 && s < 90);
+      const next = strengths.length ? Math.max.apply(null, strengths) + 1 : -1;
+      if (next > shrinkLevel && next < SHRINK_LEVELS.length) {
+        shrinkLevel = next;
+        autoShrinkSoon(400);
+        return false;
+      }
       autoGaveUp = true;
-      setSaveText("Chưa lưu được — bộ nhớ đầy", false);
-      warnStillFull("Bộ nhớ vẫn đầy mà không còn ảnh nào để nén — hãy tải backup (.json) rồi xóa bớt chương hoặc truyện cũ.");
+      warnStillFull("Bộ nhớ vẫn đầy mà không nén thêm được nữa — hãy tải backup (.json) rồi xóa bớt chương hoặc truyện cũ.");
       return false;
     }
     toast("Không có ảnh nào lưu trong máy để nén. Nếu vẫn đầy bộ nhớ, thử tải backup rồi nạp lại, hoặc bớt chương.", "err", 6000);
@@ -799,11 +832,17 @@ async function shrinkAllImages(opts) {
   if (!auto) toast("Đang nén " + jobs.length + " ảnh, khoảng 1 phút…");
   let count = 0, after = 0;
   for (const j of jobs) {
+    let done = false;
     try {
       const out = await compressImageSrc(j.src, cfg.px, cfg.q);
-      if (out.length < j.src.length) { j.imgs[j.id].src = out; count++; after += out.length; }
-      else after += j.src.length;
-    } catch (e) { after += j.src.length; }
+      /* ảnh nhỏ sẵn / không nén được → giữ nguyên và ĐÁNH DẤU để lần sau khỏi thử lại */
+      if (!out || out === j.src) { j.obj.cz = CZ_KEEP; }
+      else {
+        j.obj.cz = cfg.tag;
+        if (out.length < j.src.length) { j.obj.src = out; count++; done = true; }
+      }
+    } catch (e) { /* lỗi canvas — để nguyên, lần sau thử lại */ }
+    after += done ? j.obj.src.length : j.src.length;
     await new Promise(r => setTimeout(r, 0)); // nhường UI giữa hai ảnh để không đơ trang
   }
   shrinking = false;
@@ -815,17 +854,16 @@ async function shrinkAllImages(opts) {
 
   if (!auto) {
     if (savedOk) {
-      setSaveText("Đã tự lưu · " + fmtTime(Date.now()), true);
+      setSaveText("Đã nén ảnh · " + fmtTime(Date.now()), true);
       toast("Đã nén " + count + "/" + jobs.length + " ảnh: " + fmtBytes(totalBefore) + " → " + fmtBytes(after) + ". Lưu bình thường trở lại.", "ok", 6000);
     }
     return savedOk;
   }
 
-  /* ---- đường chạy ngầm ---- */
+  /* ---- đường chạy ngầm: không toast, không hộp thoại, chỉ dòng trạng thái ---- */
   if (gained > 20000) {
-    autoTries = 0; shrinkLevel = 0;
+    autoTries = 0;
     if (savedOk) setSaveText("Đã tự nén ảnh · " + fmtTime(Date.now()), true);
-    toast("Bộ nhớ gần đầy — đã tự nén " + count + "/" + jobs.length + " ảnh: " + fmtBytes(totalBefore) + " → " + fmtBytes(after) + ".", "ok", 5200);
   } else {
     autoTries++;
     shrinkLevel = Math.min(shrinkLevel + 1, SHRINK_LEVELS.length - 1); // lần sau nén mạnh hơn
@@ -1824,20 +1862,20 @@ function chapterCard(p, b, i) {
     placeCaret(validSaved() ? savedRange : rangeToEnd());
     if (!document.execCommand("insertHTML", false, html)) insertPlainTextAtCaret(stripInlineTags(html.replace(/<[^>]+>/g, "")));
   };
-  const insertAtCursor = src => {
-    const token = "[[IMG:" + addBlockImage(b, src) + "]]";
+  const insertAtCursor = (src, cz) => {
+    const token = "[[IMG:" + addBlockImage(b, src, cz) + "]]";
     const before = editorToText(ed);
     insertPlainTextAtCaret((before && !before.endsWith("\n") ? "\n" : "") + token + "\n");
     onEdit();
     ed.scrollTop = ed.scrollHeight; // nhìn thấy token vừa chèn
   };
   const insertImageCompressed = src => {
-    const beforeLen = src.length;
     // bộ nhớ đang căng → nén mạnh tay hơn để không bao giờ chạm trần 5MB
     const tight = storageUsedBytes() > AUTO_SHRINK_AT - 700000;
-    compressImageSrc(src, tight ? 1000 : 1200, tight ? 0.7 : 0.8).then(out => {
-      if (beforeLen - out.length > 300000) toast("Đã nén ảnh cho nhẹ bộ nhớ (" + fmtBytes(beforeLen) + " → " + fmtBytes(out.length) + ").");
-      insertAtCursor(out);
+    const lvl = SHRINK_LEVELS[tight ? 1 : 0];
+    compressImageSrc(src, lvl.px, lvl.q).then(out => {
+      // ảnh đã nén ngay lúc chèn → đánh dấu, không nén lại lúc mở trang (không thông báo gì)
+      insertAtCursor(out, out === src ? CZ_KEEP : lvl.tag);
       autoGaveUp = false;      // có ảnh mới → cho phép tự nén tiếp
       maybeAutoShrink(true);
     });
@@ -2147,7 +2185,10 @@ function init() {
   $("#mBackupDl").innerHTML = icon("download") + " Tải backup (.json)";
   $("#mBackupUl").innerHTML = icon("upload") + " Nạp backup từ máy…";
   $("#mShrink").innerHTML = icon("image") + " Nén ảnh ngay";
-  $("#mShrink").title = "App tự nén ảnh ngầm khi bộ nhớ gần đầy — bấm đây nếu muốn nén ngay bây giờ.";
+  $("#mShrink").title = "App tự nén ảnh ngầm, im lặng, không hỏi gì. Bấm đây chỉ khi muốn nén lại toàn bộ ảnh ngay bây giờ.";
+  const verEl = $("#menuVer");
+  if (verEl) verEl.textContent = "Chuseoz " + CZ_VERSION;
+  try { console.info("[Chuseoz] phiên bản " + CZ_VERSION); } catch (e) {}
   $("#mDrive").innerHTML = icon("cloud") + " Cài đặt Drive…";
   $("#mDriveRestore").innerHTML = icon("refresh") + " Khôi phục từ Drive…";
   $("#mClear").innerHTML = icon("trash") + " Xóa nội dung truyện này";
@@ -2208,9 +2249,14 @@ function init() {
 
   renderAll();
   updateStorageMeter();
-  // Luôn tự nén ảnh đã có ngay sau khi tải lại (không cần người dùng bấm nút).
-  // Việc này cũng xử lý dữ liệu cũ đã vượt ngưỡng trước khi phiên hiện tại khởi động.
-  if (!store.__memory && collectStoredImages().jobs.length) {
+  // Chỉ chạy nén ngầm lúc mở trang khi THẬT SỰ cần: còn ảnh chưa từng nén
+  // (dữ liệu cũ) hoặc bộ nhớ đã vượt ngưỡng. Ảnh đã nén rồi thì bỏ qua —
+  // mở lại trang không nén lại, không thông báo gì (nén lại chỉ làm ảnh mờ thêm).
+  const needShrink = !store.__memory && (
+    storageUsedBytes() > AUTO_SHRINK_AT ||
+    collectStoredImages().jobs.some(j => czStrength(j.obj && j.obj.cz) < 0)
+  );
+  if (needShrink) {
     autoGaveUp = false;
     autoTries = 0;
     shrinkLevel = 0;
@@ -2272,7 +2318,7 @@ function init() {
     const act = b.dataset.act;
     if (act === "backup-dl") downloadBackup();
     else if (act === "backup-ul") uploadBackup();
-    else if (act === "shrink") { autoGaveUp = false; autoTries = 0; shrinkLevel = 0; shrinkAllImages(); }
+    else if (act === "shrink") { autoGaveUp = false; autoTries = 0; shrinkLevel = 0; shrinkAllImages({ force: true }); }
     else if (act === "drive") openDriveModal();
     else if (act === "drive-restore") driveRestoreModal();
     else if (act === "clear") {
