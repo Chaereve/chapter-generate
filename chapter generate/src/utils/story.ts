@@ -2,6 +2,10 @@ import { StoryBlock } from '../types';
 
 export const STORAGE_KEY = 'chuseoz_saved_story_blocks_v2';
 export const SERVER_URL = 'https://chuseoz.pythonanywhere.com';
+export const SERVER_DISPLAY_URL = 'chuseoz.pythonanywhere.com';
+
+export const DEFAULT_LEFT_CHARS = 'Wine, Nong Lal, PhoomJAI, NoomNim, Cheese';
+export const DEFAULT_RIGHT_CHARS = 'Lullaby, Lal, Thitinan';
 
 export const BLOGGER_STYLE_SCRIPT = `<div style="display: none;">
   <img src="https://pbs.twimg.com/media/G3yj-joWoAALLuQ?format=jpg&name=large" />
@@ -59,20 +63,40 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function parseDialogueLine(line: string): { name: string; message: string } | null {
+export interface DialogueLine {
+  name: string;
+  message: string;
+  isSticker: boolean;
+}
+
+export function parseDialogueLine(line: string): DialogueLine | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   const sticker = trimmed.match(/^\(Nhãn dán\s*:\s*(.+?)\)\s*$/i);
-  if (sticker) return { name: sticker[1].trim(), message: `(Nhãn dán: ${sticker[1].trim()})` };
+  if (sticker) {
+    const name = sticker[1].trim();
+    return { name, message: `(Nhãn dán: ${name})`, isSticker: true };
+  }
   const colIdx = trimmed.indexOf(':');
   if (colIdx > 0 && colIdx <= 40) {
     const name = trimmed.slice(0, colIdx).trim();
     if (!/[.,!?。]/.test(name) && name.length >= 1) {
       const msg = trimmed.slice(colIdx + 1).trim();
-      if (msg.length > 0) return { name, message: msg };
+      if (msg.length > 0) return { name, message: msg, isSticker: false };
     }
   }
   return null;
+}
+
+/** Xác định lồng thoại bên phải dựa trên danh sách nhân vật (dùng chung cho generator + preview) */
+export function detectSide(name: string, rightChars: string): 'left' | 'right' {
+  const lName = name.toLowerCase();
+  const isRight = rightChars
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+    .some((r) => lName.includes(r) || r.includes(lName));
+  return isRight ? 'right' : 'left';
 }
 
 export function createNewBlock(prev?: StoryBlock | null): StoryBlock {
@@ -82,10 +106,10 @@ export function createNewBlock(prev?: StoryBlock | null): StoryBlock {
     if (m) num = parseInt(m[0], 10) + 1;
   }
   return {
-    id: 'blk_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    id: 'blk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
     title: `Chương ${num}`,
-    leftChars: prev ? prev.leftChars : 'Wine, Nong Lal, PhoomJAI, NoomNim, Cheese',
-    rightChars: prev ? prev.rightChars : 'Lullaby, Lal, Thitinan',
+    leftChars: prev ? prev.leftChars : DEFAULT_LEFT_CHARS,
+    rightChars: prev ? prev.rightChars : DEFAULT_RIGHT_CHARS,
     content: '',
   };
 }
@@ -93,9 +117,9 @@ export function createNewBlock(prev?: StoryBlock | null): StoryBlock {
 export function generateLocalHTML(blocks: StoryBlock[]): string {
   const htmlPages: string[] = [];
   const titles: string[] = [];
+  const SPACER = `<div style="height: 12px;"></div>`;
 
   blocks.forEach((blk) => {
-    const rightNames = blk.rightChars.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
     const lines = blk.content.replace(/(\r?\n){3,}/g, '\n\n').split('\n');
     let chunks: string[] = [];
     let chatBuf: Array<{ name: string; message: string; side: string }> = [];
@@ -115,14 +139,12 @@ export function generateLocalHTML(blocks: StoryBlock[]): string {
       const clean = line.trimEnd();
       if (!clean.trim()) {
         flushChat();
-        chunks.push(`<div style="height: 12px;"></div>`);
+        chunks.push(SPACER);
         return;
       }
       const parsed = parseDialogueLine(clean);
       if (parsed) {
-        const lName = parsed.name.toLowerCase();
-        const isRight = rightNames.some((r) => lName.includes(r) || r.includes(lName));
-        chatBuf.push({ ...parsed, side: isRight ? 'right' : 'left' });
+        chatBuf.push({ name: parsed.name, message: parsed.message, side: detectSide(parsed.name, blk.rightChars) });
       } else {
         flushChat();
         chunks.push(`<div>${escapeHtml(clean)}</div>`);
@@ -130,8 +152,8 @@ export function generateLocalHTML(blocks: StoryBlock[]): string {
     });
     flushChat();
 
-    while (chunks.length && chunks[0] === `<div style="height: 12px;"></div>`) chunks.shift();
-    while (chunks.length && chunks[chunks.length - 1] === `<div style="height: 12px;"></div>`) chunks.pop();
+    while (chunks.length && chunks[0] === SPACER) chunks.shift();
+    while (chunks.length && chunks[chunks.length - 1] === SPACER) chunks.pop();
 
     htmlPages.push(chunks.join('\n'));
     titles.push(blk.title || 'Chương...');
@@ -155,21 +177,73 @@ export function generateLocalHTML(blocks: StoryBlock[]): string {
   return total;
 }
 
+/* ============================================================
+   STORAGE AN TOÀN — localStorage có thể bị chặn (chế độ riêng
+   tư, iframe sandbox) hoặc đầy quota → fallback bộ nhớ tạm,
+   không bao giờ làm crash app.
+   ============================================================ */
+const safeStore: Storage | null = (() => {
+  try {
+    const t = '__chuseoz_test__';
+    window.localStorage.setItem(t, '1');
+    window.localStorage.removeItem(t);
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+})();
+
+const memoryStore: Record<string, string> = {};
+
+export function storageIsPersistent(): boolean {
+  return safeStore !== null;
+}
+
 export function loadFromStorage(): StoryBlock[] | null {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = safeStore ? safeStore.getItem(STORAGE_KEY) : memoryStore[STORAGE_KEY] ?? null;
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const parsed = JSON.parse(saved) as unknown;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Lọc dữ liệu hỏng thay vì crash
+        const valid = parsed.filter(
+          (b): b is StoryBlock =>
+            !!b &&
+            typeof b === 'object' &&
+            typeof (b as StoryBlock).id === 'string' &&
+            typeof (b as StoryBlock).content === 'string'
+        );
+        if (valid.length > 0) return valid;
+      }
     }
-  } catch (_) {}
+  } catch {
+    /* dữ liệu hỏng → bỏ qua, khởi tạo mới */
+  }
   return null;
 }
 
-export function saveToStorage(blocks: StoryBlock[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
+/** Trả về true nếu lưu thành công — caller có thể cảnh báo ngưởi dùng khi quota đầy. */
+export function saveToStorage(blocks: StoryBlock[]): boolean {
+  try {
+    const data = JSON.stringify(blocks);
+    if (safeStore) safeStore.setItem(STORAGE_KEY, data);
+    else memoryStore[STORAGE_KEY] = data;
+    return true;
+  } catch {
+    try {
+      memoryStore[STORAGE_KEY] = JSON.stringify(blocks);
+    } catch {
+      /* bỏ qua */
+    }
+    return false;
+  }
 }
 
 export function clearStorage(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    if (safeStore) safeStore.removeItem(STORAGE_KEY);
+    delete memoryStore[STORAGE_KEY];
+  } catch {
+    /* bỏ qua */
+  }
 }

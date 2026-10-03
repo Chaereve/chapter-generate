@@ -2,6 +2,7 @@ import { AlertState } from '../types';
 
 interface Props {
   alert: AlertState | null;
+  onClose?: () => void;
 }
 
 const configs = {
@@ -35,17 +36,27 @@ const configs = {
   },
 };
 
-export default function AlertBanner({ alert }: Props) {
+export default function AlertBanner({ alert, onClose }: Props) {
   if (!alert) return null;
   const cfg = configs[alert.type];
 
   return (
     <div
+      role="alert"
       className={`animate-fade-in flex items-start gap-3 p-4 rounded-xl border ${cfg.bg} ${cfg.border} ${cfg.text} mb-5 relative overflow-hidden`}
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${cfg.bar} rounded-l-xl`} />
       <span className="text-lg flex-shrink-0 ml-1">{cfg.icon}</span>
-      <p className="text-sm font-semibold leading-relaxed">{alert.message}</p>
+      <p className="text-sm font-semibold leading-relaxed flex-1">{alert.message}</p>
+      {onClose && (
+        <button
+          onClick={onClose}
+          aria-label="Đóng thông báo"
+          className="flex-shrink-0 -mt-0.5 -mr-1 w-6 h-6 flex items-center justify-center rounded-md opacity-50 hover:opacity-100 hover:bg-black/5 transition-all"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }

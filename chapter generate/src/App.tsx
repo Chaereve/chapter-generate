@@ -85,7 +85,7 @@ export default function App() {
               Auto-Save Active
             </div>
             <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-700/40 text-indigo-300 text-xs font-bold px-3.5 py-2 rounded-full">
-              ⚡ 100% Bug-Free
+              ⚡ Server + Local Engine
             </div>
           </div>
         </header>
@@ -94,12 +94,14 @@ export default function App() {
         <main className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
 
           {/* Tabs nav */}
-          <nav className="flex bg-slate-50 border-b border-slate-100 p-1.5 gap-1.5">
+          <nav className="flex bg-slate-50 border-b border-slate-100 p-1.5 gap-1.5" role="tablist" aria-label="Công cụ">
             {TABS.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => setActiveTab(tab.id)}
                   className={`relative flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     isActive
@@ -141,7 +143,16 @@ export default function App() {
             >
               Chuseoz Backend
             </a>{' '}
-            · Auto-Save Enabled · 100% DOM Algorithm Verified
+            · Auto-Save Enabled · DOM Algorithm Verified
+          </p>
+          <p className="text-slate-500 text-xs">
+            Bản soạn truyện đầy đủ tính năng (Word, Drive, nhiều kho truyện):{' '}
+            <a
+              href="chuseoz-standalone.html"
+              className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors"
+            >
+              chuseoz-standalone.html
+            </a>
           </p>
           <p className="text-slate-600 text-xs">
             © 2026 Chuseoz · Pro SaaS Edition · All rights reserved

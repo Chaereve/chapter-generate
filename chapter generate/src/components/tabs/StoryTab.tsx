@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { StoryBlock, AlertState, ServerStatus } from '../../types';
 import {
   SERVER_URL,
@@ -8,78 +8,125 @@ import {
   loadFromStorage,
   saveToStorage,
   clearStorage,
+  storageIsPersistent,
 } from '../../utils/story';
+import { downloadDocx } from '../../utils/docx';
 import ChapterCard from '../ChapterCard';
 import ServerStatusBar from '../ServerStatusBar';
 import AlertBanner from '../AlertBanner';
 import OutputCard from '../OutputCard';
+import ChatPreview from '../ChatPreview';
 
 export default function StoryTab() {
-  const [blocks, setBlocks] = useState<StoryBlock[]>([]);
+  // Khởi tạo lazy: nạp từ bộ nhớ ngay lần render đầu, tránh ghi đè dữ liệu cũ
+  const [blocks, setBlocks] = useState<StoryBlock[]>(() => loadFromStorage() ?? [createNewBlock()]);
   const [alert, setAlert] = useState<AlertState | null>(null);
   const [serverStatus, setServerStatus] = useState<ServerStatus>('checking');
   const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [outputStyle, setOutputStyle] = useState('');
   const [outputContent, setOutputContent] = useState('');
   const [showOutput, setShowOutput] = useState(false);
+  const [focusId, setFocusId] = useState<string>('');
+  const [previewOpen, setPreviewOpen] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const quotaWarned = useRef(false);
 
-  // Init
-  useEffect(() => {
-    const saved = loadFromStorage();
-    if (saved) {
-      setBlocks(saved);
-    } else {
-      const init = [createNewBlock()];
-      setBlocks(init);
-      saveToStorage(init);
-    }
-    checkServer();
-    const interval = setInterval(checkServer, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const checkServer = async () => {
-    setServerStatus('checking');
+  /* ---------- Kiểm tra máy chủ: không nhấp nháy trạng thái ---------- */
+  const checkServer = useCallback(async (showChecking = false) => {
+    if (showChecking) setServerStatus('checking');
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       await fetch(SERVER_URL + '/', { method: 'GET', signal: controller.signal, mode: 'no-cors' });
       clearTimeout(timeoutId);
-      setServerStatus('online');
+      setServerStatus((prev) => (prev === 'online' ? prev : 'online'));
     } catch {
-      setServerStatus('offline');
+      setServerStatus((prev) => (prev === 'offline' ? prev : 'offline'));
     }
-  };
+  }, []);
 
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      if (!alive) return;
+      await checkServer();
+    };
+    run();
+    const interval = setInterval(run, 60000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [checkServer]);
+
+  /* ---------- Auto-save có debounce — KHÔNG gọi trong setState updater ---------- */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ok = saveToStorage(blocks);
+      if (!ok && !quotaWarned.current) {
+        quotaWarned.current = true;
+        setAlert({
+          type: 'warn',
+          message: storageIsPersistent()
+            ? '⚠️ Bộ nhớ trình duyệt đã đầy — nội dung mới có thể không được lưu. Hãy copy mã ra nơi an toàn!'
+            : '⚠️ Trình duyệt đang chặn lưu trữ (chế độ riêng tư/iframe) — nội dung chỉ giữ trong phiên này.',
+        });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [blocks]);
+
+  /* ---------- Block thao tác ---------- */
   const updateBlock = (idx: number, field: keyof StoryBlock, value: string) => {
-    setBlocks((prev) => {
-      const next = prev.map((b, i) => (i === idx ? { ...b, [field]: value } : b));
-      saveToStorage(next);
-      return next;
-    });
+    setBlocks((prev) => prev.map((b, i) => (i === idx ? { ...b, [field]: value } : b)));
   };
 
   const addBlock = () => {
+    let newId = '';
     setBlocks((prev) => {
       const last = prev[prev.length - 1] ?? null;
-      const next = [...prev, createNewBlock(last)];
-      saveToStorage(next);
-      return next;
+      const nb = createNewBlock(last);
+      newId = nb.id;
+      return [...prev, nb];
     });
+    if (newId) setFocusId(newId);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
   };
 
   const deleteBlock = (idx: number) => {
     if (blocks.length <= 1) return;
     if (confirm(`Bạn có chắc muốn xóa "${blocks[idx].title}" không?`)) {
-      setBlocks((prev) => {
-        const next = prev.filter((_, i) => i !== idx);
-        saveToStorage(next);
-        return next;
-      });
+      setBlocks((prev) => prev.filter((_, i) => i !== idx));
     }
+  };
+
+  const duplicateBlock = (idx: number) => {
+    let newId = '';
+    setBlocks((prev) => {
+      const src = prev[idx];
+      const copy: StoryBlock = {
+        ...src,
+        id: 'blk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: (src.title || 'Chương') + ' (bản sao)',
+      };
+      newId = copy.id;
+      const next = [...prev];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+    if (newId) setFocusId(newId);
+  };
+
+  const moveBlock = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= blocks.length) return;
+    setBlocks((prev) => {
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
   };
 
   const resetAll = () => {
@@ -91,12 +138,13 @@ export default function StoryTab() {
       clearStorage();
       const init = [createNewBlock()];
       setBlocks(init);
-      saveToStorage(init);
+      setFocusId(init[0].id);
       setShowOutput(false);
       setAlert({ type: 'success', message: '✨ Đã dọn sạch bộ nhớ thành công! Bạn có thể bắt đầu viết truyện mới.' });
     }
   };
 
+  /* ---------- Tạo code HTML ---------- */
   const generate = async () => {
     if (blocks.every((b) => !b.content.trim())) {
       setAlert({ type: 'error', message: '⚠️ Chưa có văn bản truyện ở chương nào! Vui lòng nhập nội dung trước.' });
@@ -124,6 +172,7 @@ export default function StoryTab() {
       clearTimeout(timeoutId);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      if (typeof data?.content !== 'string') throw new Error('Phản hồi không hợp lệ');
       resultHTML = data.content;
       setServerStatus('online');
       setAlert({ type: 'success', message: '✅ Tạo code thành công từ máy chủ Python! Cấu trúc HTML đã được chuẩn hóa 100%.' });
@@ -140,7 +189,29 @@ export default function StoryTab() {
     setTimeout(() => outputRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  /* ---------- Xuất Word ---------- */
+  const exportWord = () => {
+    if (blocks.every((b) => !b.content.trim())) {
+      setAlert({ type: 'error', message: '⚠️ Chưa có nội dung chương nào để xuất Word!' });
+      return;
+    }
+    setExporting(true);
+    setAlert(null);
+    // Nhường 1 nhịp cho UI cập nhật trạng thái nút trước khi tạo file đồng bộ
+    setTimeout(() => {
+      try {
+        const fileName = downloadDocx(blocks, blocks[0]?.title || 'Truyện');
+        setAlert({ type: 'success', message: `📄 Đã xuất file Word "${fileName}" — mở bằng MS Word/Google Docs để xem.` });
+      } catch {
+        setAlert({ type: 'error', message: '⚠️ Không tạo được file Word. Vui lòng thử lại!' });
+      } finally {
+        setExporting(false);
+      }
+    }, 50);
+  };
+
   const totalChars = blocks.reduce((acc, b) => acc + b.content.length, 0);
+  const focusedBlock = blocks.find((b) => b.id === focusId) ?? blocks[0];
 
   return (
     <div className="p-6 sm:p-8">
@@ -157,7 +228,7 @@ export default function StoryTab() {
             </code>{' '}
             &{' '}
             <code className="bg-slate-100 text-indigo-600 px-1.5 py-0.5 rounded font-semibold text-xs">
-              "(Nhãn dán :Tên)"
+              "(Nhãn dán: Tên)"
             </code>
           </p>
         </div>
@@ -175,7 +246,7 @@ export default function StoryTab() {
       </div>
 
       {/* Server status */}
-      <ServerStatusBar status={serverStatus} />
+      <ServerStatusBar status={serverStatus} onRecheck={() => checkServer(true)} />
 
       {/* Chapter cards */}
       <div className="space-y-5 mb-6">
@@ -184,9 +255,14 @@ export default function StoryTab() {
             key={block.id}
             block={block}
             index={idx}
+            total={blocks.length}
             canDelete={blocks.length > 1}
+            isFocused={focusedBlock?.id === block.id}
             onUpdate={(field, value) => updateBlock(idx, field, value)}
             onDelete={() => deleteBlock(idx)}
+            onDuplicate={() => duplicateBlock(idx)}
+            onMove={(dir) => moveBlock(idx, dir)}
+            onFocus={() => setFocusId(block.id)}
           />
         ))}
         <div ref={bottomRef} />
@@ -196,10 +272,20 @@ export default function StoryTab() {
       <div className="flex gap-3 flex-wrap mb-5">
         <button
           onClick={addBlock}
-          className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-5 py-3.5 border-2 border-dashed border-emerald-300 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-400 text-emerald-700 font-bold text-sm rounded-xl transition-all duration-200 hover:-translate-y-0.5"
+          className="flex-1 min-w-[180px] flex items-center justify-center gap-2 px-5 py-3.5 border-2 border-dashed border-emerald-300 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-400 text-emerald-700 font-bold text-sm rounded-xl transition-all duration-200 hover:-translate-y-0.5"
         >
           <span className="text-lg">+</span>
           Thêm Phần / Trang Mới
+        </button>
+        <button
+          onClick={() => setPreviewOpen((v) => !v)}
+          className={`flex items-center gap-2 px-5 py-3.5 font-bold text-sm rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${
+            previewOpen
+              ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+              : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 hover:border-indigo-300 text-indigo-600'
+          }`}
+        >
+          👁 {previewOpen ? 'Ẩn xem trước' : 'Xem trước'}
         </button>
         <button
           onClick={resetAll}
@@ -209,12 +295,28 @@ export default function StoryTab() {
         </button>
       </div>
 
+      {/* Live preview */}
+      {previewOpen && focusedBlock && (
+        <div className="animate-fade-slide mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-inner">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              Xem trước dạng chat — {focusedBlock.title || 'chương hiện tại'}
+            </span>
+            <button
+              onClick={() => setPreviewOpen(false)}
+              className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              ✕ Đóng
+            </button>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 max-h-[420px] overflow-y-auto shadow-sm">
+            <ChatPreview block={focusedBlock} />
+          </div>
+        </div>
+      )}
+
       {/* Generate button */}
-      <button
-        className="btn-primary mb-5"
-        onClick={generate}
-        disabled={generating}
-      >
+      <button className="btn-primary mb-3" onClick={generate} disabled={generating || exporting}>
         {generating ? (
           <>
             <svg className="animate-spin-slow w-5 h-5" fill="none" viewBox="0 0 24 24">
@@ -231,8 +333,17 @@ export default function StoryTab() {
         )}
       </button>
 
+      {/* Word export */}
+      <button
+        className="w-full flex items-center justify-center gap-2 px-5 py-3 mb-5 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-bold text-sm transition-all duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:pointer-events-none"
+        onClick={exportWord}
+        disabled={generating || exporting}
+      >
+        {exporting ? '⏳ Đang tạo file Word...' : '📄 XUẤT FILE WORD (.DOCX)'}
+      </button>
+
       {/* Alert */}
-      <AlertBanner alert={alert} />
+      <AlertBanner alert={alert} onClose={() => setAlert(null)} />
 
       {/* Output */}
       {showOutput && (
