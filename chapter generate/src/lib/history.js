@@ -1,10 +1,4 @@
-/* ============================================================
-   LỊCH SỬ HOÀN TÁC (undo/redo) cấp ứng dụng.
-
-   contenteditable chỉ tự hoàn tác trong phạm vi 1 ô và mất sạch khi
-   DOM bị dựng lại. Vì vậy ta giữ snapshot của toàn bộ danh sách chương
-   (không kèm ảnh — ảnh nằm ở block.images và được giữ nguyên khi khôi phục).
-   ============================================================ */
+/* ===== UNDO/REDO cấp ứng dụng — contenteditable chỉ hoàn tác trong 1 ô và mất khi DOM dựng lại ===== */
 
 const DEFAULT_LIMIT = 80;
 
@@ -40,10 +34,7 @@ export function createHistory(opts) {
       current = snap(blocks);
     },
 
-    /**
-     * Ghi nhận trạng thái MỚI. Nếu khác trạng thái hiện tại thì đẩy trạng thái
-     * cũ vào ngăn undo. Trả về true khi có thay đổi được ghi.
-     */
+    /** Ghi trạng thái mới; nếu khác hiện tại thì đẩy bản cũ vào undo. @returns {boolean} */
     push(blocks) {
       const next = snap(blocks);
       if (next === current) return false;
@@ -76,10 +67,7 @@ export function createHistory(opts) {
   };
 }
 
-/**
- * Áp snapshot lên blocks hiện có, GIỮ LẠI block.images của block cùng id
- * (ảnh không nằm trong snapshot nên không được làm mất).
- */
+/** Áp snapshot lên blocks, GIỮ LẠI block.images cùng id (ảnh không nằm trong snapshot). */
 export function merge(snapshotJson, blocks) {
   const list = JSON.parse(snapshotJson);
   const imagesById = new Map();

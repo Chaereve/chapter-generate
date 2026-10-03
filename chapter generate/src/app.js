@@ -27,10 +27,7 @@ function updateStorageMeter() {
   el.innerHTML = icon("image") + " <span>" + fmtBytes(used) + " / ~5MB</span>";
 }
 
-/* ============================================================
-   TỰ NÉN ẢNH — chạy ngầm, không hỏi, không hộp thoại
-   Gần đầy bộ nhớ là tự nén toàn bộ ảnh rồi tự lưu lại.
-   ============================================================ */
+/* ===== TỰ NÉN ẢNH — chạy ngầm, không hỏi, không hộp thoại ===== */
 const AUTO_SHRINK_AT = 3300000;   // vượt mức này là tự nén ngầm (~5MB là trần)
 const SHRINK_LEVELS = [           // nén chưa ăn thua → lần sau nén mạnh tay hơn
   { px: 1200, q: 0.78 },
@@ -39,9 +36,8 @@ const SHRINK_LEVELS = [           // nén chưa ăn thua → lần sau nén mạ
   { px: 720, q: 0.55 }
 ].map(l => ({ px: l.px, q: l.q, tag: l.px + "@" + l.q }));
 const CZ_KEEP = "keep";           // ảnh nhỏ sẵn / không nén được — giữ nguyên, đừng thử lại
-/* Mỗi ảnh được ghi nhớ "đã nén ở mức nào" (images[id].cz) để KHÔNG nén lại
-   mỗi lần mở trang — nén lại chỉ làm ảnh mờ dần mà chẳng nhẹ thêm bao nhiêu.
-   Trả về: -1 = chưa từng nén (cần xử lý), 0..N = đã nén ở mức đó, 99 = giữ nguyên. */
+/* images[id].cz = mức đã nén: -1 chưa nén, 0..N mức đó, 99 giữ nguyên.
+   Có cờ này để mở trang khỏi nén lại (nén lại chỉ làm ảnh mờ thêm). */
 function czStrength(tag) {
   if (!tag) return -1;
   if (tag === CZ_KEEP) return 99;
@@ -66,8 +62,7 @@ function setSaveText(text, ok) {
 
 /* báo "vẫn đầy" bằng toast — tối đa 1 lần / 10 phút, không hộp thoại chắn màn hình */
 function warnStillFull(msg) {
-  // Tự xử lý hoàn toàn trong nền: không hiện hộp thoại/toast yêu cầu người dùng
-  // bấm nén. Nếu không thể giảm thêm, chỉ cập nhật trạng thái lưu.
+  // Chạy nền im lặng; không giảm thêm được thì chỉ cập nhật trạng thái lưu.
   const now = Date.now();
   if (now - fullWarnAt < 600000) return;
   fullWarnAt = now;
@@ -114,10 +109,7 @@ function maybeAutoShrink(savedOk) {
   autoShrinkSoon(400);
 }
 
-/* nén toàn bộ ảnh đang lưu.
-   opts.auto  = chạy ngầm: IM LẶNG tuyệt đối (không toast, không hộp thoại),
-                chỉ cập nhật dòng trạng thái lưu ở thanh bên.
-   opts.force = nén lại cả ảnh đã nén rồi (nút "Nén ảnh ngay"). */
+/* Nén toàn bộ ảnh. opts.auto = chạy ngầm im lặng; opts.force = nén lại cả ảnh đã nén. */
 async function shrinkAllImages(opts) {
   opts = opts || {};
   const auto = !!opts.auto;
@@ -199,9 +191,7 @@ async function shrinkAllImages(opts) {
   return savedOk;
 }
 
-/* ============================================================
-   DỮ LIỆU — projects / blocks (giữ nguyên key cũ)
-   ============================================================ */
+/* ===== DỮ LIỆU — projects / blocks (giữ nguyên key cũ) ===== */
 function makeBlock(prev) {
   let n = 1;
   if (prev && prev.title) {
@@ -319,9 +309,7 @@ function persistNow() {
   return ok;
 }
 
-/* ============================================================
-   DRIVE — cùng giao thức Apps Script với bản gốc
-   ============================================================ */
+/* ===== DRIVE — cùng giao thức Apps Script với bản gốc ===== */
 function cloudCfg() {
   return {
     url: (store.getItem(KEY_CLOUD_URL) || "").trim(),
@@ -362,12 +350,8 @@ async function remoteStatus(U, key) {
 
 let conflictAsked = false;
 
-/**
- * Phát hiện xung đột: Drive đang giữ bản MỚI HƠN lần đẩy cuối của máy này,
- * trong khi máy này cũng đã sửa sau thời điểm đó. Trước đây app cứ im lặng
- * ghi đè — mất dữ liệu của máy kia mà không ai biết.
- * @returns {Promise<boolean>} true = cứ ghi đè, false = dừng lại
- */
+/** Drive giữ bản mới hơn lần đẩy cuối, mà máy này cũng đã sửa sau đó.
+ *  @returns {Promise<boolean>} true = ghi đè, false = dừng */
 async function checkCloudConflict(U, key) {
   if (conflictAsked) return true;
   const lastPush = Date.parse(store.getItem(KEY_CLOUD_AT) || "") || 0;
@@ -528,9 +512,7 @@ async function driveRestoreModal() {
   }
 }
 
-/* ============================================================
-   RENDER — rail / chapters / preview
-   ============================================================ */
+/* ===== RENDER — rail / chapters / preview ===== */
 function applyStoryFilter(q) {
   const needle = String(q || "").trim().toLowerCase();
   document.querySelectorAll("#storyList .story-item").forEach(el => {
@@ -1001,9 +983,7 @@ function renderPreview() {
   if (nearBottom) body.scrollTop = body.scrollHeight;
 }
 
-/* ============================================================
-   HÀNH ĐỘNG CHÍNH
-   ============================================================ */
+/* ===== HÀNH ĐỘNG CHÍNH ===== */
 function currentStoryTitle() {
   const p = activeProject();
   return (p && p.title && p.title.trim()) || "Truyện chưa đặt tên";
@@ -1184,10 +1164,7 @@ function renderAll() {
 /* ---------- rail mobile ---------- */
 function closeRail() { $("#rail").classList.remove("open"); $("#railScrim").classList.remove("open"); }
 
-/* ============================================================
-   THỐNG KÊ · DÀN BÀI CHƯƠNG · NHÃN DÁN · BẢNG LỆNH · TÌM KIẾM
-   CHẾ ĐỘ TẬP TRUNG · LỊCH SỬ PHIÊN BẢN · CHẨN ĐOÁN
-   ============================================================ */
+/* ===== THỐNG KÊ · DÀN BÀI · NHÃN DÁN · BẢNG LỆNH · TÌM KIẾM · TẬP TRUNG · LỊCH SỬ · CHẨN ĐOÁN ===== */
 
 /* ---------- thanh thống kê ---------- */
 function renderStats() {
@@ -1512,8 +1489,7 @@ async function doReplace(all) {
   const hit = fbHits[fbIdx];
   const b = p.blocks.find(x => x.id === hit.itemId);
   if (!b) return;
-  // kết quả tìm được tính trên văn bản đã bỏ thẻ <b>/<i> để đánh dấu đúng trong DOM,
-  // nên chỉ thay đúng 1 chỗ khi chương không có định dạng (vị trí khớp nhau)
+  // Vị trí khớp tính trên văn bản đã bỏ <b>/<i>, nên chỉ thay khi chương không định dạng.
   if (stripInlineTags(b.content || "") !== (b.content || "")) {
     toast("Chương này có in đậm/nghiêng — hãy dùng “Thay tất cả”.", "err");
     return;
@@ -1764,9 +1740,7 @@ async function clearStory() {
   toast("Đã xóa nội dung truyện hiện tại — Ctrl+Z để hoàn tác.", "ok");
 }
 
-/* ============================================================
-   HÀNH ĐỘNG DÙNG CHUNG (được gọi từ topbar, menu, bảng lệnh và phím tắt)
-   ============================================================ */
+/* ===== HÀNH ĐỘNG DÙNG CHUNG (được gọi từ topbar, menu, bảng lệnh và phím tắt) ===== */
 function togglePreview() {
   state.previewOpen = !state.previewOpen;
   $("#preview").classList.toggle("open", state.previewOpen);
@@ -1820,14 +1794,11 @@ function redo() {
 
 let syncThemeUi = () => {};
 
-/* ============================================================
-   KHỞI TẠO
-   ============================================================ */
+/* ===== KHỞI TẠO ===== */
 function init() {
   installGlobalHandlers();
   logInfo("boot", "khởi động Chuseoz " + CZ_VERSION);
 
-  // nhãn nút
   $("#burger").innerHTML = icon("menu");
   $("#btnFind").innerHTML = icon("search") + ' <span class="blabel">Tìm</span>';
   $("#btnPalette").innerHTML = icon("command");
@@ -1856,7 +1827,6 @@ function init() {
   if (verEl) verEl.textContent = "Chuseoz " + CZ_VERSION + " · " + (idbAvailable() ? "IndexedDB sẵn sàng" : "chỉ localStorage");
   try { console.info("[Chuseoz] phiên bản " + CZ_VERSION); } catch (e) {}
 
-  // nút thao tác cho màn hình nhỏ
   $("#mbCode").innerHTML = icon("code") + " Tạo mã";
   $("#mbWord").innerHTML = icon("doc") + " Word";
   $("#mbPreview").innerHTML = icon("eye") + " Xem";
@@ -1877,7 +1847,6 @@ function init() {
   initTheme(syncThemeUi);
   themeBtn.addEventListener("click", () => { cycleTheme(); syncThemeUi(); });
 
-  // thu gọn sidebar (PC)
   const railEl = $("#rail"), railToggle = $("#railToggle");
   const syncRailUi = () => {
     const c = railEl.classList.contains("collapsed");
@@ -1903,7 +1872,6 @@ function init() {
     $("#storageWarn").style.display = "block";
   }
 
-  // nạp dữ liệu
   state.projects = readProjects();
   if (!state.projects.length) state.projects.push(normalizeProject({ blocks: [makeBlock(null)] }));
   const savedActive = store.getItem(KEY_ACTIVE);
@@ -1934,9 +1902,7 @@ function init() {
   renderAll();
   setRailTab("stories");
   updateStorageMeter();
-  // Chỉ chạy nén ngầm lúc mở trang khi THẬT SỰ cần: còn ảnh chưa từng nén
-  // (dữ liệu cũ) hoặc bộ nhớ đã vượt ngưỡng. Ảnh đã nén rồi thì bỏ qua —
-  // mở lại trang không nén lại, không thông báo gì (nén lại chỉ làm ảnh mờ thêm).
+  // Lúc mở trang chỉ nén khi còn ảnh chưa nén hoặc bộ nhớ vượt ngưỡng.
   const needShrink = !store.__memory && (
     storageUsedBytes() > AUTO_SHRINK_AT ||
     collectStoredImages().jobs.some(j => czStrength(j.obj && j.obj.cz) < 0)
@@ -1949,7 +1915,6 @@ function init() {
   }
   if (idbAvailable()) scheduleSnapshot();
 
-  // sự kiện
   $("#storyTitle").addEventListener("input", ev => {
     const p = activeProject();
     if (!p) return;
@@ -1980,7 +1945,6 @@ function init() {
   $("#previewToggle").addEventListener("click", togglePreview);
   $("#addChapter").addEventListener("click", () => addChapter(true));
 
-  // tìm & thay thế
   $("#fbClose").innerHTML = icon("x");
   $("#fbPrev").innerHTML = icon("up");
   $("#fbNext").innerHTML = icon("down");
@@ -1997,7 +1961,6 @@ function init() {
     if (ev.key === "Escape") { ev.preventDefault(); closeFindBar(); }
   });
 
-  // bảng lệnh
   $("#palette").addEventListener("click", ev => {
     if (ev.target === $("#palette")) closePalette();
     const it = ev.target.closest(".pal-item");
@@ -2011,7 +1974,6 @@ function init() {
     else if (ev.key === "Escape") { ev.preventDefault(); closePalette(); }
   });
 
-  // menu ⋯
   const menu = $("#moreMenu");
   const closeMenu = () => { menu.classList.remove("open"); $("#moreBtn").setAttribute("aria-expanded", "false"); };
   $("#moreBtn").addEventListener("click", ev => {
@@ -2040,7 +2002,6 @@ function init() {
     else if (act === "clear") clearStory();
   });
 
-  // phím tắt toàn cục
   document.addEventListener("keydown", ev => {
     const mod = ev.ctrlKey || ev.metaKey;
     const tag = (ev.target && ev.target.tagName || "").toLowerCase();
@@ -2063,8 +2024,7 @@ function init() {
       if (ok) { setSaveText("Đã lưu · " + fmtTime(Date.now()), true); toast("Đã lưu.", "ok"); }
       return;
     }
-    // hoàn tác cấp ứng dụng: chỉ khi con trỏ KHÔNG nằm trong ô soạn
-    // (trong ô soạn thì để contenteditable tự hoàn tác từng chữ)
+    // Hoàn tác cấp app chỉ khi con trỏ ngoài ô soạn (trong ô soạn để contenteditable tự lo).
     if (mod && !ev.shiftKey && ev.key.toLowerCase() === "z" && !typing) { ev.preventDefault(); undo(); return; }
     if (mod && ev.key.toLowerCase() === "z" && ev.shiftKey && !typing) { ev.preventDefault(); redo(); return; }
     if (mod && ev.key.toLowerCase() === "y" && !typing) { ev.preventDefault(); redo(); return; }
@@ -2077,8 +2037,7 @@ function init() {
     if (idbAvailable()) pushSnapshot("trước khi đóng trang");
   });
   window.addEventListener("resize", debounce(() => {
-    // màn hình thu hẹp dưới ngưỡng thì preview chuyển thành panel nổi (CSS lo),
-    // nhưng đừng tự đóng để người dùng không mất nội dung đang xem
+    // Dưới ngưỡng thì preview thành panel nổi (CSS lo) — đừng tự đóng kẻo mất nội dung.
     if (syncResizer) syncResizer();
   }, 200));
 

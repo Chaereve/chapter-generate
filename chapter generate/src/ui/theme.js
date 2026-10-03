@@ -1,9 +1,6 @@
 import { store, KEY_THEME } from "../lib/store.js";
 
-/* ============================================================
-   GIAO DIỆN: 3 chế độ — sáng / tối / theo hệ thống
-   (bản cũ chỉ có bật-tắt, người dùng theo hệ thống tối không giữ được lựa chọn)
-   ============================================================ */
+/* ===== GIAO DIỆN: sáng / tối / theo hệ thống ===== */
 
 export const THEME_PREFS = ["auto", "light", "dark"];
 export const THEME_LABELS = { auto: "Theo hệ thống", light: "Sáng", dark: "Tối" };

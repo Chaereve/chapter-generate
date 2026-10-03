@@ -13,9 +13,8 @@ export function addBlockImage(b, src, cz) {
   return id;
 }
 /* trả về src thật của token: ưu tiên id trong kho ảnh, sau đó chấp nhận token cũ (URL/data dài) */
-/* Chỉ chấp nhận http(s) và data:image/ — chặn javascript:, vbscript:, data:text/html…
-   Kể cả src đã lưu trong block.images cũng phải qua cửa này: dữ liệu cũ hoặc
-   file backup nạp vào có thể chứa URL độc. */
+/* Chỉ nhận http(s) và data:image/ — chặn javascript:, vbscript:, data:text/html…
+   src trong block.images cũng phải qua đây: backup nạp vào có thể chứa URL độc. */
 const SAFE_SRC = /^(?:https?:\/\/|data:image\/)/i;
 export function isSafeImageSrc(src) {
   return typeof src === "string" && SAFE_SRC.test(src.trim());

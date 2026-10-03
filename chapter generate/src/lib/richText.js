@@ -1,8 +1,4 @@
-/* ============================================================
-   ĐỊNH DẠNG IN ĐẬM / IN NGHIÊNG trong contenteditable
-   bằng Range API — thay cho document.execCommand("bold"/"italic")
-   đã bị loại bỏ khỏi chuẩn web.
-   ============================================================ */
+/* ===== ĐẬM / NGHIÊNG trong contenteditable bằng Range API (thay execCommand đã bị loại) ===== */
 
 const INLINE = { b: "b", strong: "b", i: "i", em: "i" };
 
@@ -44,11 +40,8 @@ function expandToWord(range) {
   return r;
 }
 
-/**
- * Liệt kê các node chữ nằm trong range.
- * Tự duyệt đệ quy thay vì TreeWalker(SHOW_TEXT) — một số môi trường
- * lọc whatToShow không đúng, và cách này chạy y hệt trên mọi trình duyệt.
- */
+/** Node chữ trong range. Duyệt đệ quy thay vì TreeWalker(SHOW_TEXT) —
+ *  một số môi trường lọc whatToShow không đúng. */
 export function textNodesOf(root) {
   const out = [];
   const collect = (node) => {
@@ -105,10 +98,7 @@ function enclosingTagOf(range, tagName, root) {
   return owner;
 }
 
-/**
- * Bật/tắt in đậm (tagName = "b") hoặc in nghiêng (tagName = "i") cho vùng chọn.
- * @returns {boolean} true nếu DOM có thay đổi
- */
+/** Bật/tắt đậm ("b") hoặc nghiêng ("i"). @returns {boolean} true nếu DOM đổi */
 export function toggleInline(root, tagName) {
   const sel = typeof window !== "undefined" && window.getSelection && window.getSelection();
   if (!sel || !sel.rangeCount || !root) return false;
@@ -123,10 +113,8 @@ export function toggleInline(root, tagName) {
     sel.addRange(range);
   }
 
-  /* Nếu MỌI node chữ trong vùng chọn đều đã nằm trong cùng một thẻ <tag>
-     thì bỏ định dạng. Kiểm tra theo từng node chứ không theo
-     commonAncestorContainer — vì khi bôi đen cả thẻ, commonAncestor lại là
-     phần tử cha và sẽ không thấy thẻ <b> bên trong. */
+  /* Kiểm tra theo từng node chứ không theo commonAncestorContainer: khi bôi
+     đen cả thẻ thì commonAncestor là phần tử cha, không thấy thẻ <b> bên trong. */
   const owner = enclosingTagOf(range, tagName, root);
   if (owner) {
     unwrapTag(owner);

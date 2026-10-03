@@ -1,6 +1,5 @@
 
-/* Phiên bản — hiện ở cuối menu ⋯ và trong console để biết đang chạy bản nào. */
-/* phiên bản lấy từ package.json (Vite define __APP_VERSION__) — không hardcode nữa */
+/* Phiên bản lấy từ package.json qua Vite define — hiện ở menu ⋯ và console. */
 export const CZ_VERSION = "v" + (typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "0.0.0-dev");
 
 /* ---------- storage an toàn (khung xem trước có thể chặn localStorage) ---------- */

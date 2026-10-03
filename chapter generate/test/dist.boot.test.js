@@ -4,17 +4,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 /**
- * Boot file dist/index.html đã build (một tệp tự chứa) trong DOM thật.
- *
- * Khác với app.smoke.test.js (nạp src/app.js qua import), test này chạy đúng
- * artifact người dùng mở: HTML + CSS + JS đã inline. Nó bắt được lỗi chỉ xuất
- * hiện sau khi bundle — ví dụ thẻ </script> đóng sớm làm cụt JS.
- *
- * dist/ bị gitignore nên bỏ qua khi chưa build.
+ * Boot dist/index.html trong DOM — chạy đúng artifact người dùng mở, nên bắt
+ * được lỗi chỉ lộ sau khi bundle. Tự skip khi chưa build (dist/ bị gitignore).
  */
 const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.html");
-const hasDist = existsSync(distPath);
-const d = hasDist ? describe : describe.skip;
+const d = existsSync(distPath) ? describe : describe.skip;
 
 d("dist/index.html (bản build) tự chạy được", () => {
   let html = "";
@@ -34,10 +28,8 @@ d("dist/index.html (bản build) tự chạy được", () => {
   });
 
   it("JS không bị đóng thẻ sớm (lỗi </script> trong template literal)", () => {
-    // Lưu ý: KHÔNG đếm thô <script> vs </script>. app.js sinh HTML Blogger nên
-    // chuỗi "<script>" có xuất hiện bên trong template literal, và closer của
-    // chúng đã escape thành "<\/script>" — đếm thô sẽ ra 3 vs 2 và đó là đúng.
-    // Bất biến thật: trong thân script chính không được có "</script>" trần.
+    // Không đếm thô <script> vs </script>: chuỗi "<script>" nằm trong template
+    // literal của HTML Blogger, closer đã escape — đếm thô ra 3 vs 2 là đúng.
     const main = html.match(/<script type="module"[^>]*>([\s\S]*?)<\/script>/);
     expect(main, "không tìm thấy script chính").toBeTruthy();
     const body = main[1];
@@ -61,8 +53,7 @@ d("dist/index.html (bản build) tự chạy được", () => {
   });
 
   it("chạy JS đã bundle và dựng được giao diện", async () => {
-    // Nạp lại DOM sạch rồi thực thi đúng đoạn JS đã inline trong dist.
-    // innerHTML không tự chạy <script>, nên phải eval thủ công.
+    // innerHTML không tự chạy <script> nên phải eval thủ công.
     localStorage.clear();
     document.body.innerHTML = html.match(/<body[^>]*>([\s\S]*)<\/body>/)[1];
     window.HTMLElement.prototype.scrollIntoView = () => {};

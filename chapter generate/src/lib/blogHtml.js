@@ -1,5 +1,5 @@
-/* eslint-disable no-useless-escape -- chuỗi <\/script> bên trong template literal là
-   cố ý: dist/index.html được vite-plugin-singlefile nhúng JS vào trong thẻ script. */
+/* eslint-disable no-useless-escape -- <\/script> trong template literal là cố ý:
+   vite-plugin-singlefile nhúng JS vào thẻ script. */
 import { escHtml } from "./util.js";
 import { escInline, parseSmartLine, sideOf } from "./parser.js";
 import { imageSrcOf } from "./images.js";
@@ -74,8 +74,7 @@ export function buildPart2(blocks) {
       const isImgToken = line.trim().match(new RegExp("^\\[\\[IMG:[^\\]]+\\]\\]$", "i"));
       if (isImgToken) {
         const imgSrc = imageSrcOf(block, line.trim());
-        // token ảnh nhưng src bị loại (javascript:, thiếu dữ liệu…) → bỏ hẳn dòng,
-        // đừng để URL độc lọt ra ngoài dưới dạng chữ
+        // src bị loại (javascript:, thiếu dữ liệu…) → bỏ hẳn dòng, đừng để URL lọt ra dạng chữ
         if (imgSrc) { flush(buf); parts.push('<img class="story-inline-image" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" />'); }
         return;
       }

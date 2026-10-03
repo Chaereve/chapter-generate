@@ -1,10 +1,7 @@
 import { parseSmartLine, sideOf, stripInlineTags } from "./parser.js";
 import { imageSrcOf } from "./images.js";
 
-/* ============================================================
-   XUẤT MARKDOWN / VĂN BẢN THÔ
-   Dùng lại đúng bộ parser của trình tạo HTML để kết quả khớp nhau.
-   ============================================================ */
+/* ===== XUẤT MARKDOWN / VĂN BẢN THÔ — dùng lại bộ parser của trình tạo HTML ===== */
 
 /** '<b>x</b>' -> '**x**', '<i>y</i>' -> '*y*' */
 export function inlineToMarkdown(s) {
@@ -17,10 +14,8 @@ export function inlineToMarkdown(s) {
 
 const IMG_LINE = /^\[\[IMG:[^\]]+\]\]$/i;
 
-/**
- * @param {{title:string,content:string,rightChars:string,images?:object}[]} blocks
- * @param {object} [opts] {storyTitle, chatAs:'quote'|'bold', embedImages:boolean}
- */
+/** @param {{title:string,content:string,rightChars:string,images?:object}[]} blocks
+ *  @param {object} [opts] {storyTitle, chatAs:'quote'|'bold', embedImages:boolean} */
 export function blocksToMarkdown(blocks, opts) {
   const o = Object.assign({ storyTitle: "", chatAs: "bold", embedImages: true }, opts || {});
   const out = [];

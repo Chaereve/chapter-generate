@@ -1,8 +1,6 @@
 import { $, icon } from "../lib/util.js";
 
-/* ============================================================
-   MODAL — có bẫy focus (focus trap), trả focus về nơi mở, đóng bằng Esc
-   ============================================================ */
+/* ===== MODAL — có bẫy focus (focus trap), trả focus về nơi mở, đóng bằng Esc ===== */
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
@@ -118,10 +116,7 @@ export function closeAllModals() {
   document.querySelectorAll(".modal-scrim").forEach((m) => closeModal(m));
 }
 
-/* ============================================================
-   HỘP THOẠI XÁC NHẬN — thay cho confirm() gốc của trình duyệt
-   (theme được theo sáng/tối, mô tả rõ ràng, nút đặt tên theo hành động)
-   ============================================================ */
+/* ===== HỘP THOẠI XÁC NHẬN — thay confirm() gốc ===== */
 export function confirmDialog(cfg) {
   return new Promise((resolve) => {
     let done = false;
@@ -156,10 +151,7 @@ export function confirmDialog(cfg) {
   });
 }
 
-/* ============================================================
-   HỘP THOẠI CHỌN 1 TRONG NHIỀU PHƯƠNG ÁN
-   Dùng cho những quyết định không phải "có/không" (VD: GỘP hay THAY THẾ)
-   ============================================================ */
+/* ===== HỘP THOẠI CHỌN 1 TRONG NHIỀU (VD: GỘP hay THAY THẾ) ===== */
 export function choiceDialog(cfg) {
   return new Promise((resolve) => {
     let done = false;

@@ -1,8 +1,4 @@
-/* ============================================================
-   TÌM & THAY THẾ — hàm thuần, dễ kiểm thử
-   Không dùng lookbehind để tương thích Safari cũ; kiểm tra "cả từ"
-   bằng \p{L}/\p{N} nên hoạt động đúng với tiếng Việt có dấu.
-   ============================================================ */
+/* ===== TÌM & THAY THẾ — hàm thuần. Không lookbehind (Safari cũ); "cả từ" theo \p{L}/\p{N} nên đúng tiếng Việt ===== */
 
 function escapeRe(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -20,10 +16,7 @@ export function buildRegExp(query, opts) {
   return new RegExp(escapeRe(query), o.caseSensitive ? "gu" : "gui");
 }
 
-/**
- * Tìm tất cả vị trí khớp trong 1 chuỗi.
- * @returns {{index:number,length:number}[]}
- */
+/** @returns {{index:number,length:number}[]} mọi vị trí khớp trong 1 chuỗi */
 export function findIn(text, query, opts) {
   if (!query) return [];
   const o = opts || {};
@@ -65,11 +58,9 @@ export function replaceAt(text, hit, replacement) {
   };
 }
 
-/**
- * Gom kết quả tìm kiếm trên nhiều khối.
- * @param {{id:string,text:string}[]} items
- * @returns {{itemId:string,index:number,length:number}[]}
- */
+/** Gom kết quả tìm trên nhiều khối.
+ *  @param {{id:string,text:string}[]} items
+ *  @returns {{itemId:string,index:number,length:number}[]} */
 export function findAcross(items, query, opts) {
   const out = [];
   (items || []).forEach((it) => {

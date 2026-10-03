@@ -1,9 +1,4 @@
-/* ============================================================
-   NHẬT KÝ CHẨN ĐOÁN
-   Trước đây mọi lỗi bị `catch (e) {}` nuốt mất, không cách nào biết app hỏng
-   ở đâu. Vòng nhật ký này giữ 200 mục gần nhất và cho phép xuất ra file
-   để gửi khi báo lỗi — không gửi đi đâu cả, tất cả nằm trong máy người dùng.
-   ============================================================ */
+/* ===== NHẬT KÝ CHẨN ĐOÁN — 200 mục gần nhất, xuất file được; thay cho `catch (e) {}` nuốt lỗi ===== */
 
 const LIMIT = 200;
 const entries = [];

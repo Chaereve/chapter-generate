@@ -1,9 +1,4 @@
-/* ============================================================
-   IndexedDB — kho lưu lớn cho ảnh và bản sao lịch sử.
-   localStorage chỉ ~5MB; IndexedDB thường cho hàng trăm MB.
-   Mọi hàm đều an toàn: nếu trình duyệt chặn IndexedDB thì trả giá trị
-   "không dùng được" thay vì ném lỗi, để app chạy tiếp bằng localStorage.
-   ============================================================ */
+/* ===== IndexedDB — kho lớn cho ảnh & bản sao lịch sử; bị chặn thì trả null, không ném lỗi ===== */
 
 const DB_NAME = "chuseoz";
 const DB_VERSION = 1;

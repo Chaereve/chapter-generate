@@ -1,7 +1,6 @@
 name: CI
 
-# Chạy trên MỌI nhánh: bản cũ chỉ chạy ở main + PR nên chưa từng được kích hoạt
-# trên nhánh làm việc, thành ra không kiểm tra được gì.
+# Chạy trên mọi nhánh — bản cũ chỉ chạy ở main + PR nên chưa từng được kích hoạt.
 on:
   push:
   pull_request:
@@ -11,9 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        # LƯU Ý: tên thư mục có dấu cách là CỐ Ý và KHÔNG ĐƯỢC ĐỔI.
-        # Dự án Cloudflare Pages "chuseoz-chapter" đang trỏ Root directory vào
-        # đúng đường dẫn "chapter generate". Đổi tên là build trên Pages hỏng ngay.
+        # ĐỪNG ĐỔI tên thư mục: Cloudflare Pages "chuseoz-chapter" trỏ Root directory
+        # vào đúng đường dẫn "chapter generate". Đổi tên là build trên Pages hỏng ngay.
         working-directory: chapter generate
     steps:
       - uses: actions/checkout@v4
@@ -36,9 +34,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Chạy SAU build: test/dist.boot.test.js tự bỏ qua khi chưa có dist/.
-      # Bước này thực thi chính đoạn JS đã bundle trong dist — bắt được lỗi
-      # "build ra trang trắng" mà các test trên src/ không thấy được.
+      # Sau build: thực thi JS đã bundle trong dist — bắt lỗi "build ra trang trắng".
       - name: Boot thử bản build
         run: npx vitest run test/dist.boot.test.js
 
