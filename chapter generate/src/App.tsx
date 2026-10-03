@@ -145,15 +145,6 @@ export default function App() {
             </a>{' '}
             · Auto-Save Enabled · DOM Algorithm Verified
           </p>
-          <p className="text-slate-500 text-xs">
-            Bản soạn truyện đầy đủ tính năng (Word, Drive, nhiều kho truyện):{' '}
-            <a
-              href="chuseoz-standalone.html"
-              className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors"
-            >
-              chuseoz-standalone.html
-            </a>
-          </p>
           <p className="text-slate-600 text-xs">
             © 2026 Chuseoz · Pro SaaS Edition · All rights reserved
           </p>
