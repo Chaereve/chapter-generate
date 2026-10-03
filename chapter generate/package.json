@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Chuseoz — bộ soạn truyện chat cho Blogger. Một file HTML, không phụ thuộc runtime.",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

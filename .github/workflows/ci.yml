@@ -36,6 +36,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Chạy SAU build: test/dist.boot.test.js tự bỏ qua khi chưa có dist/.
+      # Bước này thực thi chính đoạn JS đã bundle trong dist — bắt được lỗi
+      # "build ra trang trắng" mà các test trên src/ không thấy được.
+      - name: Boot thử bản build
+        run: npx vitest run test/dist.boot.test.js
+
       - name: Kiểm tra dist là một file duy nhất
         run: |
           test -f dist/index.html
