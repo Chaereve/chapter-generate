@@ -24,7 +24,9 @@ npm run build      # → dist/index.html (một file duy nhất, đã inline CSS
 ```
 
 `vite-plugin-singlefile` gộp toàn bộ CSS/JS vào `index.html`, nên sản phẩm cuối vẫn là
-**một file** — giữ đúng đặc tính "tải về là chạy" của bản gốc.
+**một file** — giữ đúng đặc tính "tải về là chạy" của bản gốc. Icon Tabler được import lúc build
+và nhúng trực tiếp thành SVG; trang không tải icon từ CDN hay cần kết nối mạng để hiện icon.
+Thông tin giấy phép Tabler nằm trong `THIRD-PARTY-LICENSES.md` và phần ghi chú trong HTML xuất ra.
 
 ## Kiểm tra
 
@@ -57,6 +59,7 @@ chapter generate/
 │  ├─ main.js              # entry: nạp CSS rồi khởi động app
 │  ├─ app.js               # render + nối sự kiện (phần có trạng thái)
 │  ├─ lib/                 # hàm thuần, không đụng DOM state → kiểm thử được
+│  │  ├─ icons.js          #   icon Tabler outline, nhúng SVG inline khi build
 │  │  ├─ parser.js         #   nhận diện "Tên: thoại", (Nhãn dán: X), <b>/<i>
 │  │  │                    #   (kèm contenteditable ⇄ văn bản: editorToText/textToEditorHtml)
 │  │  ├─ images.js         #   token [[IMG:id]], nén ảnh, lọc src độc hại
