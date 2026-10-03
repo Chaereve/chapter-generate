@@ -641,7 +641,7 @@ function migrateBlockImages(b) {
   return b;
 }
 
-/* nén ảnh dán/tải lên: thu về tối đa 1400px + JPEG, giảm mạnh dung lượng lưu máy */
+/* nén ảnh dán/tải lên: thu về tối đa maxPx + JPEG, giảm mạnh dung lượng lưu máy */
 function compressImageSrc(src, maxPx, quality) {
   return new Promise(resolve => {
     const img = new Image();
@@ -651,7 +651,7 @@ function compressImageSrc(src, maxPx, quality) {
         if (!w || !h) return resolve(src);
         const MAX = maxPx || 1200;
         const k = Math.min(1, MAX / Math.max(w, h));
-        if (k === 1 && src.length < 400000) return resolve(src); // ảnh nhỏ sẵn — giữ nguyên
+        if (k === 1 && src.length < 250000) return resolve(src); // ảnh nhỏ sẵn — giữ nguyên
         const cv = document.createElement("canvas");
         cv.width = Math.max(1, Math.round(w * k));
         cv.height = Math.max(1, Math.round(h * k));
@@ -695,65 +695,149 @@ function updateStorageMeter() {
   el.classList.remove("warn", "full");
   if (used > 4600000) el.classList.add("full");
   else if (used > 3600000) el.classList.add("warn");
-  el.title = "Dung lượng truyện + ảnh đang lưu trong trình duyệt (giới hạn khoảng 5MB). Ảnh dán vào đã được tự nén — mỗi ảnh chỉ chiếm ~100–300KB.";
+  el.title = "Dung lượng truyện + ảnh đang lưu trong trình duyệt (giới hạn khoảng 5MB). Ảnh được tự nén ngầm khi gần đầy — không cần bấm gì cả.";
   el.innerHTML = icon("image") + " <span>" + fmtBytes(used) + " / ~5MB</span>";
 }
 
-/* ---- nén toàn bộ ảnh base64 đang lưu (xử lý ảnh cũ to) ---- */
+/* ============================================================
+   TỰ NÉN ẢNH — chạy ngầm, không hỏi, không hộp thoại
+   Gần đầy bộ nhớ là tự nén toàn bộ ảnh rồi tự lưu lại.
+   ============================================================ */
+const AUTO_SHRINK_AT = 3300000;   // vượt mức này là tự nén ngầm (~5MB là trần)
+const SHRINK_LEVELS = [           // nén chưa ăn thua → lần sau nén mạnh tay hơn
+  { px: 1200, q: 0.78 },
+  { px: 1000, q: 0.70 },
+  { px: 860, q: 0.62 },
+  { px: 720, q: 0.55 }
+];
 let shrinking = false;
-async function shrinkAllImages() {
-  if (shrinking) return;
+let shrinkLevel = 0;
+let autoTimer = 0;
+let autoTries = 0;                // số lần nén liên tiếp mà không giảm được bao nhiêu
+let autoGaveUp = false;           // ngừng tự nén tới khi bộ nhớ nhẹ lại / người dùng tự bấm
+let fullWarnAt = 0;
+
+const shrinkCfg = () => SHRINK_LEVELS[Math.min(shrinkLevel, SHRINK_LEVELS.length - 1)];
+
+function setSaveText(text, ok) {
+  const box = $("#saveStatus");
+  if (!box) return;
+  box.classList.toggle("saved", !!ok);
+  const t = $("#saveStatusText");
+  if (t) t.textContent = text;
+}
+
+/* báo "vẫn đầy" bằng toast — tối đa 1 lần / 10 phút, không hộp thoại chắn màn hình */
+function warnStillFull(msg) {
+  const now = Date.now();
+  if (now - fullWarnAt < 600000) return;
+  fullWarnAt = now;
+  toast(msg, "err", 9000);
+}
+
+/* gom mọi ảnh base64 đang lưu trong các chương */
+function collectStoredImages() {
   const jobs = [];
-  let totalBefore = 0;
+  let total = 0;
   state.projects.forEach(pr => pr.blocks.forEach(b => {
     const imgs = b.images || {};
     Object.keys(imgs).forEach(id => {
       const src = imgs[id] && imgs[id].src;
       if (src && /^data:image\//i.test(src)) {
-        totalBefore += src.length;
+        total += src.length;
         jobs.push({ imgs, id, src });
       }
     });
   }));
-  if (!jobs.length) {
-    toast("Không có ảnh nào lưu trong máy để nén. Nếu vẫn đầy bộ nhớ, thử tải backup rồi nạp lại, hoặc bớt chương.", "err", 6000);
+  return { jobs, total };
+}
+
+/* lên lịch nén ngầm — gọi bao nhiêu lần cũng chỉ chạy một đợt */
+function autoShrinkSoon(delay) {
+  if (store.__memory || shrinking || autoGaveUp || autoTimer) return;
+  autoTimer = setTimeout(() => {
+    autoTimer = 0;
+    if (autoGaveUp || shrinking) return;
+    shrinkAllImages({ auto: true });
+  }, delay == null ? 600 : delay);
+}
+
+/* sau mỗi lần lưu: gần đầy thì tự nén; chỉ "tha" cho cờ dừng khi đã lưu được */
+function maybeAutoShrink(savedOk) {
+  if (store.__memory) return;
+  const used = storageUsedBytes();
+  if (used < 0) return;
+  if (used < AUTO_SHRINK_AT) {
+    if (savedOk) { autoGaveUp = false; autoTries = 0; shrinkLevel = 0; }
     return;
   }
+  autoShrinkSoon(400);
+}
+
+/* nén toàn bộ ảnh đang lưu. opts.auto = chạy ngầm (không hỏi, không spam toast) */
+async function shrinkAllImages(opts) {
+  opts = opts || {};
+  const auto = !!opts.auto;
+  if (shrinking) return false;
+  const found = collectStoredImages();
+  const jobs = found.jobs, totalBefore = found.total;
+  if (!jobs.length) {
+    if (auto) {
+      autoGaveUp = true;
+      setSaveText("Chưa lưu được — bộ nhớ đầy", false);
+      warnStillFull("Bộ nhớ vẫn đầy mà không còn ảnh nào để nén — hãy tải backup (.json) rồi xóa bớt chương hoặc truyện cũ.");
+      return false;
+    }
+    toast("Không có ảnh nào lưu trong máy để nén. Nếu vẫn đầy bộ nhớ, thử tải backup rồi nạp lại, hoặc bớt chương.", "err", 6000);
+    return false;
+  }
   shrinking = true;
-  toast("Đang nén " + jobs.length + " ảnh, khoảng 1 phút…");
+  const cfg = shrinkCfg();
+  setSaveText((auto ? "Đang tự nén " : "Đang nén ") + jobs.length + " ảnh…", false);
+  if (!auto) toast("Đang nén " + jobs.length + " ảnh, khoảng 1 phút…");
   let count = 0, after = 0;
   for (const j of jobs) {
     try {
-      const out = await compressImageSrc(j.src, 1200, 0.78);
+      const out = await compressImageSrc(j.src, cfg.px, cfg.q);
       if (out.length < j.src.length) { j.imgs[j.id].src = out; count++; after += out.length; }
       else after += j.src.length;
     } catch (e) { after += j.src.length; }
+    await new Promise(r => setTimeout(r, 0)); // nhường UI giữa hai ảnh để không đơ trang
   }
   shrinking = false;
   const savedOk = writeProjects(state.projects);
   updateStorageMeter();
   if (savedOk) queueCloudPush();
   renderPreview();
-  if (savedOk) {
-    $("#saveStatus").classList.add("saved");
-    $("#saveStatusText").textContent = "Đã tự lưu · " + fmtTime(Date.now());
-    toast("Đã nén " + count + "/" + jobs.length + " ảnh: " + fmtBytes(totalBefore) + " → " + fmtBytes(after) + ". Lưu bình thường trở lại.", "ok", 6000);
-  }
-}
+  const gained = totalBefore - after;
 
-/* ---- hộp thoại đề xuất nén khi bộ nhớ đầy (không spam) ---- */
-let quotaSnoozeUntil = 0;
-function offerShrinkModal() {
-  const now = Date.now();
-  if (now < quotaSnoozeUntil) return;
-  quotaSnoozeUntil = now + 600000; // tối đa 1 lần mỗi 10 phút
-  openModal("<h2>Bộ nhớ máy đã đầy</h2>",
-    '<p style="font-size:13.5px;line-height:1.6;color:var(--ink2);margin:0 0 10px">Truyện + ảnh đang lưu đã vượt giới hạn <b>~5MB</b> của trình duyệt nên không lưu được nữa.</p>' +
-    '<p style="font-size:13.5px;line-height:1.6;color:var(--ink2);margin:0">Ảnh dán vào truyện (những đợt trước) còn gốc chưa nén — <b>nén lại</b> sẽ thu nhỏ còn vài phần trăm, chất lượng vẫn đủ xem trên blog và vẫn nhúng được vào file Word.</p>',
-    "", [
-      { label: "Nén ảnh ngay", cls: "btn btn-primary", onClick: s => { closeModal(s); shrinkAllImages(); } },
-      { label: "Để sau (1 giờ)", cls: "btn", onClick: s => { quotaSnoozeUntil = Date.now() + 3600000; closeModal(s); } }
-    ]);
+  if (!auto) {
+    if (savedOk) {
+      setSaveText("Đã tự lưu · " + fmtTime(Date.now()), true);
+      toast("Đã nén " + count + "/" + jobs.length + " ảnh: " + fmtBytes(totalBefore) + " → " + fmtBytes(after) + ". Lưu bình thường trở lại.", "ok", 6000);
+    }
+    return savedOk;
+  }
+
+  /* ---- đường chạy ngầm ---- */
+  if (gained > 20000) {
+    autoTries = 0; shrinkLevel = 0;
+    if (savedOk) setSaveText("Đã tự nén ảnh · " + fmtTime(Date.now()), true);
+    toast("Bộ nhớ gần đầy — đã tự nén " + count + "/" + jobs.length + " ảnh: " + fmtBytes(totalBefore) + " → " + fmtBytes(after) + ".", "ok", 5200);
+  } else {
+    autoTries++;
+    shrinkLevel = Math.min(shrinkLevel + 1, SHRINK_LEVELS.length - 1); // lần sau nén mạnh hơn
+  }
+  if (!savedOk || storageUsedBytes() > AUTO_SHRINK_AT) {
+    if (autoTries >= 2) {
+      autoGaveUp = true;
+      warnStillFull("Đã nén ảnh hết cỡ mà bộ nhớ vẫn đầy — hãy tải backup (.json) rồi xóa bớt chương hoặc truyện cũ.");
+      if (!savedOk) setSaveText("Chưa lưu được — bộ nhớ đầy", false);
+    } else {
+      autoShrinkSoon(500); // nén tiếp ở mức mạnh hơn
+    }
+  }
+  return savedOk;
 }
 function parseLine(line) {
   const t = String(line || "").trim();
@@ -1300,12 +1384,14 @@ function writeProjects(list) {
     store.setItem(KEY_PROJECTS, JSON.stringify({ version: 1, projects: list }));
     return true;
   } catch (e) {
-    $("#saveStatus").classList.remove("saved");
     if (store.__memory) {
-      $("#saveStatusText").textContent = "Không lưu được — bị chặn lưu trữ";
+      setSaveText("Không lưu được — bị chặn lưu trữ", false);
+    } else if (autoGaveUp) {
+      setSaveText("Chưa lưu được — bộ nhớ đầy", false);
     } else {
-      $("#saveStatusText").textContent = "Lỗi lưu — bộ nhớ đầy";
-      offerShrinkModal();
+      /* bộ nhớ đầy → tự nén ảnh ngầm rồi tự lưu lại, không hỏi người dùng */
+      setSaveText("Bộ nhớ đầy — đang tự nén ảnh…", false);
+      autoShrinkSoon(300);
     }
     return false;
   }
@@ -1335,11 +1421,9 @@ function gcUnusedImages() {
 const saveProjects = debounce(() => {
   gcUnusedImages();
   const saved = writeProjects(state.projects);
-  if (saved) {
-    $("#saveStatus").classList.add("saved");
-    $("#saveStatusText").textContent = "Đã tự lưu · " + fmtTime(Date.now());
-  }
+  if (saved) setSaveText("Đã tự lưu · " + fmtTime(Date.now()), true);
   updateStorageMeter();
+  maybeAutoShrink(saved); // gần đầy bộ nhớ thì tự nén ngầm
   queueCloudPush();
 }, 400);
 
@@ -1347,11 +1431,9 @@ const saveProjects = debounce(() => {
 function persistNow() {
   gcUnusedImages();
   const ok = writeProjects(state.projects);
-  if (ok) {
-    $("#saveStatus").classList.add("saved");
-    $("#saveStatusText").textContent = "Đã tự lưu · " + fmtTime(Date.now());
-  }
+  if (ok) setSaveText("Đã tự lưu · " + fmtTime(Date.now()), true);
   updateStorageMeter();
+  maybeAutoShrink(ok);
   queueCloudPush();
   return ok;
 }
@@ -1749,9 +1831,13 @@ function chapterCard(p, b, i) {
   };
   const insertImageCompressed = src => {
     const beforeLen = src.length;
-    compressImageSrc(src).then(out => {
+    // bộ nhớ đang căng → nén mạnh tay hơn để không bao giờ chạm trần 5MB
+    const tight = storageUsedBytes() > AUTO_SHRINK_AT - 700000;
+    compressImageSrc(src, tight ? 1000 : 1200, tight ? 0.7 : 0.8).then(out => {
       if (beforeLen - out.length > 300000) toast("Đã nén ảnh cho nhẹ bộ nhớ (" + fmtBytes(beforeLen) + " → " + fmtBytes(out.length) + ").");
       insertAtCursor(out);
+      autoGaveUp = false;      // có ảnh mới → cho phép tự nén tiếp
+      maybeAutoShrink(true);
     });
   };
   const urlInput = card.querySelector(".url");
@@ -2058,7 +2144,8 @@ function init() {
   $("#addChapter").innerHTML = icon("plus") + " Thêm chương";
   $("#mBackupDl").innerHTML = icon("download") + " Tải backup (.json)";
   $("#mBackupUl").innerHTML = icon("upload") + " Nạp backup từ máy…";
-  $("#mShrink").innerHTML = icon("image") + " Nén ảnh lưu máy";
+  $("#mShrink").innerHTML = icon("image") + " Nén ảnh ngay";
+  $("#mShrink").title = "App tự nén ảnh ngầm khi bộ nhớ gần đầy — bấm đây nếu muốn nén ngay bây giờ.";
   $("#mDrive").innerHTML = icon("cloud") + " Cài đặt Drive…";
   $("#mDriveRestore").innerHTML = icon("refresh") + " Khôi phục từ Drive…";
   $("#mClear").innerHTML = icon("trash") + " Xóa nội dung truyện này";
@@ -2119,7 +2206,7 @@ function init() {
 
   renderAll();
   updateStorageMeter();
-  if (storageUsedBytes() > 4600000) setTimeout(offerShrinkModal, 800);
+  maybeAutoShrink(); // dữ liệu cũ nặng → tự nén ngầm ngay, không hiện hộp thoại hỏi
 
   // sự kiện
   $("#storyTitle").addEventListener("input", ev => {
@@ -2176,7 +2263,7 @@ function init() {
     const act = b.dataset.act;
     if (act === "backup-dl") downloadBackup();
     else if (act === "backup-ul") uploadBackup();
-    else if (act === "shrink") shrinkAllImages();
+    else if (act === "shrink") { autoGaveUp = false; autoTries = 0; shrinkLevel = 0; shrinkAllImages(); }
     else if (act === "drive") openDriveModal();
     else if (act === "drive-restore") driveRestoreModal();
     else if (act === "clear") {
