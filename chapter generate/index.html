@@ -1167,7 +1167,7 @@ function makeBlock(prev) {
 function normalizeProject(p) {
   return {
     id: p.id || uid("story_"),
-    title: p.title || "Truyện chưa đặt tên",
+    title: typeof p.title === "string" ? p.title : "",
     updatedAt: p.updatedAt || new Date().toISOString(),
     blocks: (Array.isArray(p.blocks) ? p.blocks : []).filter(b => b && typeof b === "object").map(b => migrateBlockImages({
       id: b.id || uid("blk_"),
@@ -1202,8 +1202,12 @@ function writeProjects(list) {
     return true;
   } catch (e) {
     $("#saveStatus").classList.remove("saved");
-    $("#saveStatusText").textContent = "Lỗi lưu — bộ nhớ đầy";
-    offerShrinkModal();
+    if (store.__memory) {
+      $("#saveStatusText").textContent = "Không lưu được — bị chặn lưu trữ";
+    } else {
+      $("#saveStatusText").textContent = "Lỗi lưu — bộ nhớ đầy";
+      offerShrinkModal();
+    }
     return false;
   }
 }
@@ -1220,7 +1224,17 @@ function activeProject() {
 function touchProject(p) {
   p.updatedAt = new Date().toISOString();
 }
+function gcUnusedImages() {
+  state.projects.forEach(pr => pr.blocks.forEach(b => {
+    if (!b.images || typeof b.images !== "object") return;
+    const content = String(b.content || "");
+    Object.keys(b.images).forEach(id => {
+      if (content.indexOf("[[IMG:" + id + "]]") < 0) delete b.images[id];
+    });
+  }));
+}
 const saveProjects = debounce(() => {
+  gcUnusedImages();
   const saved = writeProjects(state.projects);
   if (saved) {
     $("#saveStatus").classList.add("saved");
@@ -1318,6 +1332,7 @@ function ingestBackupData(data, mode) {
     state.projects = Array.from(map.values());
     if (activeId && state.projects.some(p => p.id === activeId)) state.activeId = activeId;
   }
+  state.focusedBlock = "";
   writeProjects(state.projects);
   renderAll();
   return { added: clean.length };
@@ -1386,6 +1401,7 @@ async function driveRestoreModal() {
    MODAL
    ============================================================ */
 function openModal(titleHtml, bodyHtml, footHtml, buttons) {
+  document.querySelectorAll(".modal-scrim").forEach(m => closeModal(m));
   const scrim = document.createElement("div");
   scrim.className = "modal-scrim";
   const btns = (buttons || []).map((b, i) => '<button class="' + (b.cls || "btn") + '" data-mi="' + i + '">' + b.label + "</button>").join("");
@@ -1400,11 +1416,15 @@ function openModal(titleHtml, bodyHtml, footHtml, buttons) {
     const mi = ev.target.closest("[data-mi]");
     if (mi && buttons && buttons[+mi.dataset.mi] && buttons[+mi.dataset.mi].onClick) buttons[+mi.dataset.mi].onClick(scrim);
   });
-  const escFn = ev => { if (ev.key === "Escape") { closeModal(scrim); document.removeEventListener("keydown", escFn); } };
+  const escFn = ev => { if (ev.key === "Escape") closeModal(scrim); };
+  scrim.__escFn = escFn;
   document.addEventListener("keydown", escFn);
   return scrim;
 }
-function closeModal(scrim) { scrim.remove(); }
+function closeModal(scrim) {
+  if (scrim.__escFn) document.removeEventListener("keydown", scrim.__escFn);
+  scrim.remove();
+}
 
 /* ============================================================
    RENDER — rail / chapters / preview
@@ -1458,6 +1478,8 @@ function renderRail() {
     list.appendChild(el);
   });
   $("#storyCount").textContent = state.projects.length ? state.projects.length : "";
+  const ap = activeProject();
+  document.title = (ap && ap.title && ap.title.trim() ? ap.title.trim() : "Truyện chưa đặt tên") + " — Chuseoz";
 }
 
 function renderChapters() {
@@ -1465,7 +1487,7 @@ function renderChapters() {
   const box = $("#chapters");
   box.innerHTML = "";
   $("#emptyState").style.display = p && p.blocks.length ? "none" : "block";
-  $("#addChapter").style.display = p && p.blocks.length ? "flex" : "none";
+  $("#addChapter").style.display = "flex";
   if (!p) return;
   p.blocks.forEach((b, i) => box.appendChild(chapterCard(p, b, i)));
   if (!state.focusedBlock && p.blocks.length) state.focusedBlock = p.blocks[0].id;
@@ -1655,6 +1677,7 @@ const renderRailSoft = debounce(renderRail, 500);
 function renderPreview() {
   const p = activeProject();
   const body = $("#pvBody");
+  const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
   if (!p || !p.blocks.length) { body.innerHTML = '<div class="pv-empty">Chưa có gì để xem trước.</div>'; return; }
   const b = p.blocks.find(x => x.id === state.focusedBlock) || p.blocks[0];
   $("#pvChapterName").textContent = b.title || "";
@@ -1685,7 +1708,7 @@ function renderPreview() {
   });
   flush();
   body.innerHTML = html || '<div class="pv-empty">Chương đang trống — viết vài dòng để xem trước.</div>';
-  body.scrollTop = body.scrollHeight;
+  if (nearBottom) body.scrollTop = body.scrollHeight;
 }
 
 /* ============================================================
@@ -1710,7 +1733,10 @@ function openCodeModal() {
     '<p class="cs-sub">Dán tiếp vào <b>phía dưới</b> phần Style &amp; Script, cùng bài đăng đó.</p>' +
     '<div class="code-box" id="cb2"></div></div>';
   const scrim = openModal("<h2>Mã HTML đã sẵn sàng</h2>", body, currentStoryTitle() + " · " + p.blocks.length + " chương",
-    [{ label: "Đóng", cls: "btn" }]);
+    [
+      { label: "Sao chép gộp (dán 1 lần)", cls: "btn btn-ink", onClick: () => copyText(part1 + "\n\n" + part2) },
+      { label: "Đóng", cls: "btn" }
+    ]);
   scrim.querySelector("#cb1").textContent = part1;
   scrim.querySelector("#cb2").textContent = part2;
   scrim.addEventListener("click", ev => {
@@ -1979,6 +2005,7 @@ function init() {
 
   // phím tắt
   document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape") menu.classList.remove("open");
     if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") { ev.preventDefault(); openCodeModal(); }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); writeProjects(state.projects); toast("Đã lưu.", "ok"); }
   });
@@ -1986,5 +2013,5 @@ function init() {
 }
 init();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3fb2d4a6e3a2637',t:'MTc5MDE4MzU3NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
